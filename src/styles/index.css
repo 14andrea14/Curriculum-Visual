@@ -1,0 +1,370 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+/* Barra de desplazamiento: fina, moderna, un solo color (rosa neón, pedido explícito:
+   nada de degradé cian/rosa). Pista transparente y pastilla redondeada que "flota"
+   (el borde transparente la separa del costado); al pasar el mouse se enciende. */
+html {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: #F230D2 transparent;
+}
+::-webkit-scrollbar {
+  width: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #F230D2;
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+  min-height: 48px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #ff6fe0;
+  border-width: 2px;
+  background-clip: padding-box;
+}
+
+/* Escenarios fijados (ScrollTrigger pin) siempre del ancho REAL de la página.
+   ScrollTrigger mide el escenario con una barra de scroll forzada (html{overflow-y:scroll}
+   mientras refresca) y deja pin-spacer + escenario con ese ancho en px (p. ej. 1895 px).
+   Pero Lenis, al hacer stop() en los viajes del scroll asistido, pone html{overflow:hidden}:
+   la barra desaparece, la página pasa a medir 1910 px y el escenario queda ~15 px más angosto:
+   por el costado derecho asoma el fondo de la sección (franja azul noche junto a la carta
+   de la sección gamer). Con 100 % el ancho sigue al de la página con o sin barra. Los
+   escenarios son todos de ancho completo, así que no cambia nada más. */
+.pin-spacer {
+  width: 100% !important;
+  max-width: none !important;
+}
+.pin-spacer > * {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+/* Base styles */
+html, body {
+  background-color: #07060B;
+  color: #e2e8f0;
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+}
+
+/* Lenis Recommended CSS */
+html.lenis, html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
+/* PORTADA BLOQUEADA (escritorio): se conserva la barra de scroll. Con Lenis detenido
+   el overflow:hidden de arriba la quitaba y, al soltar la portada (fin del guiño del
+   primer clic), volvía: el ancho de la página cambiaba ~11-15 px y TODOS los
+   ResizeObserver saltaban a la vez — entre ellos el del nombre del pie (FooterScene),
+   que llama a ScrollTrigger.refresh(): medido una tarea de 540-770 ms con la figura,
+   las letras y el cursor congelados. (scrollbar-gutter no sirve: Chrome no reserva el
+   hueco en el viewport con overflow:hidden.) Rueda, teclas y toque ya los bloquea la
+   portada, y arrastrar la barra lo devuelve a la pose (HeroSection, handleScrollSettle).
+   La clase la pone/quita HeroSection junto con el bloqueo. Móvil: sin cambios. */
+@media (min-width: 1024px) {
+  html.lenis.lenis-stopped.hero-cover-lock {
+    overflow-x: hidden;
+    overflow-y: scroll;
+  }
+}
+
+.lenis.lenis-scrolling iframe {
+  pointer-events: none;
+}
+
+/* Neon Text Glow Utilities */
+.text-glow-cyan {
+  text-shadow: 0 0 8px rgba(0, 229, 255, 0.6), 0 0 20px rgba(0, 229, 255, 0.3);
+}
+
+.text-glow-magenta {
+  text-shadow: 0 0 8px rgba(224, 25, 133, 0.6), 0 0 20px rgba(224, 25, 133, 0.3);
+}
+
+.text-glow-purple {
+  text-shadow: 0 0 8px rgba(33, 25, 81, 0.7), 0 0 20px rgba(33, 25, 81, 0.4);
+}
+
+/* Cyberpunk Glass Card */
+.cyber-card {
+  background: rgba(33, 25, 81, 0.3);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(0, 229, 255, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cyber-card:hover {
+  border-color: rgba(0, 229, 255, 0.6);
+  box-shadow: 0 12px 40px 0 rgba(0, 229, 255, 0.15), inset 0 0 20px rgba(0, 229, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.cyber-card-magenta {
+  background: rgba(33, 15, 30, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(224, 25, 133, 0.2);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 15px rgba(224, 25, 133, 0.05);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.cyber-card-magenta:hover {
+  border-color: rgba(224, 25, 133, 0.6);
+  box-shadow: 0 12px 40px 0 rgba(224, 25, 133, 0.15), inset 0 0 20px rgba(224, 25, 133, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Scanlines overlay */
+.scanlines-overlay {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.25) 50%
+  ), linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.03),
+    rgba(0, 255, 0, 0.01),
+    rgba(0, 0, 255, 0.03)
+  );
+  background-size: 100% 4px, 6px 100%;
+  pointer-events: none;
+}
+
+/* Indicador de scroll inicial: chip/circuito con pulsos entrando hacia el
+   centro (ver ScrollCircuitIndicator.tsx) — "recibiendo" energía, no
+   irradiándola, por eso el flujo del trazo va de afuera hacia adentro. */
+@keyframes circuit-flow {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+
+@keyframes circuit-node-pulse {
+  0%, 100% {
+    opacity: 0.3;
+    transform: scale(0.75);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.35);
+  }
+}
+
+@keyframes server-msg-flash {
+  0% {
+    background-color: rgba(224, 25, 133, 0.28);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+@keyframes typewriter-reveal {
+  from {
+    width: 0;
+  }
+  to {
+    width: var(--target-w);
+  }
+}
+
+@keyframes blink-cursor {
+  0%, 49% {
+    opacity: 1;
+  }
+  50%, 100% {
+    opacity: 0;
+  }
+}
+
+@keyframes chevron-cascade {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  65% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes digital-rain-fall {
+  from {
+    transform: translateY(-50%);
+  }
+  to {
+    transform: translateY(0%);
+  }
+}
+
+@keyframes circuit-core-pulse {
+  0%, 100% {
+    opacity: 0.7;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.1);
+  }
+}
+
+/* Corner clip angles for cyberpunk UI elements */
+.cyber-clip {
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 12px 100%, 0 calc(100% - 12px));
+}
+
+.cyber-clip-sm {
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+}
+
+/* Pantalla de bloqueo (ScrollTerminal.tsx) */
+@keyframes lock-rise {
+  from { opacity: 0; transform: translate3d(0, 18px, 0); filter: blur(8px); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); filter: blur(0); }
+}
+@keyframes scroll-wheel {
+  0% { opacity: 0; transform: translateY(-2px); }
+  25% { opacity: 1; }
+  80% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 0; transform: translateY(12px); }
+}
+
+/* Sello giratorio (editorial.tsx) */
+@keyframes stamp-spin { to { transform: rotate(360deg); } }
+
+/* Franja de tecnologías (TechMarquee) */
+@keyframes marquee-x { from { transform: translateX(0); } to { transform: translateX(-50%); } }
+@media (prefers-reduced-motion: reduce) { [style*="marquee-x"], [style*="stamp-spin"] { animation: none !important; } }
+
+/* Portada: letras derretidas (DrippingWord) y fondo (HeroBackdrop) */
+@keyframes drip-stretch { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(1.07); } }
+@keyframes drip-fall {
+  0%, 55% { transform: translateY(0); opacity: 0; }
+  60% { opacity: 1; }
+  100% { transform: translateY(220px); opacity: 0; }
+}
+@keyframes aurora-a { from { transform: translate(0, 0) scale(1); } to { transform: translate(-8vw, 6vw) scale(1.15); } }
+@keyframes aurora-b { from { transform: translate(0, 0) scale(1); } to { transform: translate(10vw, -6vw) scale(1.1); } }
+@keyframes aurora-c { from { transform: translate(0, 0) scale(1.05); } to { transform: translate(-12vw, -4vw) scale(0.95); } }
+@keyframes grid-run { from { background-position: 0 0, 0 0; } to { background-position: 0 70px, 0 0; } }
+@media (prefers-reduced-motion: reduce) {
+  [style*="drip-stretch"], [style*="drip-fall"], [style*="aurora-"], [style*="grid-run"] { animation: none !important; }
+}
+
+/* Indicador de la portada bloqueada (anillo que pulsa, sin texto) */
+@keyframes hint-ping { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(2.4); opacity: 0; } }
+
+/* Grano de película sobre la portada y la transformación: unifica la textura entre la
+   imagen nítida (Gemini) y los fotogramas del video, que tienen menos detalle fino —
+   el grano es el mismo en ambos y enmascara la diferencia de calidad. */
+.hero-grain {
+  position: absolute;
+  inset: -10%;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><filter id='n' x='0' y='0' width='100%25' height='100%25'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='1 0 0 0 0  1 0 0 0 0  1 0 0 0 0  0 0 0 0 1'/></filter><rect width='240' height='240' filter='url(%23n)'/></svg>");
+  background-size: 240px 240px;
+  /* Sin mix-blend-mode (antes overlay al 12 %): una capa de pantalla completa con
+     fusión sobre los canvas obligaba a una composición intermedia en cada frame.
+     Con mezcla normal y menos opacidad el grano se ve casi igual y sale barato. */
+  opacity: 0.05;
+  animation: grain-shift 0.6s steps(6) infinite;
+}
+@keyframes grain-shift {
+  0% { transform: translate(0, 0); }
+  17% { transform: translate(-3%, 2%); }
+  34% { transform: translate(2%, -3%); }
+  50% { transform: translate(-2%, -2%); }
+  67% { transform: translate(3%, 3%); }
+  84% { transform: translate(-3%, -1%); }
+  100% { transform: translate(0, 0); }
+}
+@media (prefers-reduced-motion: reduce) { .hero-grain { animation: none; } }
+
+/* ===== Carta coleccionable holográfica (sección de formación) ===== */
+.poke-card {
+  /* marco holográfico: arcoíris pastel que se desplaza con el cursor y solo */
+  background: linear-gradient(115deg, #ffd56b 0%, #ff8ad8 18%, #b78bff 36%, #7fd8ff 54%, #9dffcf 72%, #ffd56b 90%);
+  background-size: 300% 300%;
+  background-position: var(--mx, 50%) var(--my, 50%);
+  animation: poke-frame-shift 7s ease-in-out infinite alternate;
+}
+@keyframes poke-frame-shift {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
+.poke-holo {
+  background: repeating-linear-gradient(
+    115deg,
+    rgba(255, 119, 230, 0) 0%,
+    rgba(255, 119, 230, 0.35) 6%,
+    rgba(120, 220, 255, 0.35) 12%,
+    rgba(255, 240, 150, 0.3) 18%,
+    rgba(160, 255, 200, 0.3) 24%,
+    rgba(255, 119, 230, 0) 30%
+  );
+  background-size: 260% 260%;
+  background-position: var(--mx, 50%) var(--my, 50%);
+  mix-blend-mode: color-dodge;
+  opacity: 0.55;
+  animation: poke-holo-shift 6s linear infinite;
+}
+@keyframes poke-holo-shift {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 100% 100%; }
+}
+.poke-glare {
+  background: radial-gradient(circle at var(--mx, 50%) var(--my, 30%), rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0) 45%);
+  mix-blend-mode: soft-light;
+  opacity: calc(0.35 + 0.65 * var(--glare, 0));
+  transition: opacity 200ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .poke-card, .poke-holo { animation: none; }
+}
+
+/* Carta estilo Pokémon V: textura fina tipo grabado (líneas diagonales finísimas + grano)
+   que se ilumina con el cursor, como la superficie texturizada de las cartas reales. */
+.pokev-etch {
+  background-image:
+    repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0 1px, rgba(0, 0, 0, 0) 1px 3px),
+    repeating-linear-gradient(45deg, rgba(0, 0, 0, 0.05) 0 1px, rgba(0, 0, 0, 0) 1px 4px),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.35'/></svg>");
+  mix-blend-mode: overlay;
+  opacity: calc(0.55 + 0.35 * var(--glare, 0));
+}

@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.DS_Store
+*.local
+.env
+.env.*
+
+# Carpeta de skills de referencia (contiene repos git anidados de terceros, no es código del proyecto)
+Skills/
+
+# Configuración local de herramientas (puede traer permisos y rutas personales)
+.claude/
+.mcp.json
+# Carpeta de Vercel CLI
+.vercel/
+# Material de trabajo (imágenes originales y prompts para Gemini): no se publica
+para-gemini/

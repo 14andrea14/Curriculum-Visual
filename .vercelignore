@@ -1,0 +1,41 @@
+# Archivos que NO se suben a Vercel cuando se despliega con la CLI (`vercel`/`vercel --prod`).
+# (Con la integración de GitHub, Vercel clona el repo; ahí lo que no quieras publicar
+#  se controla con .gitignore / scripts/publish-clean.ps1, no con este archivo.)
+#
+# IMPORTANTE: no excluir nada que el build necesite: src/, public/, index.html,
+# package.json, package-lock.json, vite.config.ts, tsconfig*.json, tailwind.config.js,
+# postcss.config.js y vercel.json deben seguir yendo.
+
+# Dependencias y build local (Vercel instala y compila por su cuenta)
+node_modules
+dist
+
+# Material de trabajo y fotos originales
+para-gemini
+ellie-busto-ia-2
+Gemini_Generated_Image*
+WhatsApp Image*
+base.glb
+*.glb
+*.bmp
+
+# Documentación interna y scripts de apoyo (no hacen falta para compilar)
+docs
+scripts
+ANALISIS_Y_PLAN_V2.md
+PROJECT_CONTEXT.md
+/Alejandra_Arismendi_CV.pdf
+*.cjs
+convert.ps1
+
+# Configuración local de herramientas, git y entorno
+.claude
+.mcp.json
+.git
+.vercel
+.env
+.env.*
+*.local
+*.log
+.DS_Store
+Thumbs.db

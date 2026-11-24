@@ -1,0 +1,95 @@
+/* Etiquetas DOM de la órbita: el contenedor (0×0) se coloca EXACTO sobre el nodo
+   proyectado; el texto se abre hacia afuera según el lado (data-side l/r). */
+.orbit-tech-inner,
+.orbit-hub-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+
+.orbit-tech-inner {
+  pointer-events: inherit;
+  transform: translate(11px, -50%);
+  padding: 3px 7px;
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #ece8f2;
+  text-shadow: 0 0 6px #0a1a2b, 0 0 2px #0a1a2b, 0 0 12px #0a1a2b;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  transition: color 0.25s, background-color 0.25s, border-color 0.25s;
+}
+.orbit-tech[data-side='l'] .orbit-tech-inner {
+  transform: translate(calc(-100% - 11px), -50%);
+}
+.orbit-tech-inner:hover,
+.orbit-tech-inner.is-on {
+  color: #fff;
+  text-shadow: none;
+  background: rgba(242, 48, 210, 0.18);
+  border-color: #f230d2;
+  box-shadow: 0 0 18px rgba(242, 48, 210, 0.35);
+}
+
+.orbit-hub-inner {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  transform: translate(22px, -50%);
+  padding: 6px 10px 5px;
+  background: rgba(10, 26, 43, 0.9);
+  border-left: 2px solid #f230d2;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.orbit-hub[data-side='l'] .orbit-hub-inner {
+  transform: translate(calc(-100% - 22px), -50%);
+  border-left: 0;
+  border-right: 2px solid #f230d2;
+}
+
+/* Cielo de respaldo de la sección (CSS, estático): se ve donde no llega el lienzo
+   del espacio (contenido móvil, cierre) y mientras el lienzo arranca. */
+.space-css-stars {
+  background-color: #050b14;
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(236, 232, 242, 0.75), transparent 60%),
+    radial-gradient(1px 1px at 68% 9%, rgba(236, 232, 242, 0.55), transparent 60%),
+    radial-gradient(1.5px 1.5px at 41% 63%, rgba(247, 184, 236, 0.7), transparent 60%),
+    radial-gradient(1px 1px at 87% 47%, rgba(236, 232, 242, 0.6), transparent 60%),
+    radial-gradient(1px 1px at 27% 86%, rgba(236, 232, 242, 0.45), transparent 60%),
+    radial-gradient(1.5px 1.5px at 93% 82%, rgba(242, 48, 210, 0.6), transparent 60%),
+    radial-gradient(1px 1px at 55% 34%, rgba(236, 232, 242, 0.4), transparent 60%);
+  background-size: 340px 380px;
+}
+
+/* Variante móvil (SVG 2D) */
+@keyframes orbit-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.orbit-m-ring {
+  transform-box: view-box;
+  transform-origin: 0 0;
+  animation: orbit-spin var(--orbit-dur, 80s) linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .orbit-m-ring {
+    animation: none;
+  }
+}
+
+/* Bombilla de la lámpara de la foto del tablero dentro del escenario de la órbita
+   (escritorio): la escala y la opacidad las escribe SystemsGrid con el parpadeo de encendido */
+.orbit-lampbox .fm-lamp-bulb {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+}
