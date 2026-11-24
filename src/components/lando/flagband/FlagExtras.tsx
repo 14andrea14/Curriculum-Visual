@@ -59,20 +59,33 @@ const CARDS: { k: string; t: string; f?: string; steps?: string[] }[] = [
 ];
 
 export const FlagExtrasLite = React.forwardRef<HTMLDivElement>(function FlagExtrasLite(_, ref) {
+  const groups = [WORDS.slice(0, 3), WORDS.slice(3)];
   return (
-    <div ref={ref} className="absolute left-4 right-4 top-[23%] z-[12] mx-auto motion-reduce:left-auto motion-reduce:right-auto max-w-[34rem] border border-white/15 bg-[#0A1A2B]/95 px-4 py-3 text-[#ECE8F2] shadow-[0_6px_24px_#07060B] rounded-2xl motion-reduce:relative motion-reduce:top-auto motion-reduce:mt-6" style={{ visibility: 'hidden', opacity: 0 }}>
-      <ul aria-label="Herramientas y habilidades" className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[clamp(0.69rem,3vw,0.9rem)] leading-tight pb-3">
-        {WORDS.map(({ t }) => <li key={t}>{t}</li>)}
-      </ul>
-      <ul className="grid gap-y-2 border-t border-white/15 pt-2.5">
-        {CARDS.map(({ k, t, f, steps }) => (
-          <li key={t}>
-            <span className="block text-[0.64rem] leading-tight text-[#F5A7E9]">{k}</span>
-            <span className="block text-[clamp(0.77rem,3.4vw,1rem)] font-semibold leading-tight">{t}</span>
-            <span className="block text-[clamp(0.68rem,2.9vw,0.87rem)] leading-snug text-[#ECE8F2]/75">{f ?? steps?.join(' · ')}</span>
+    <div ref={ref} className="absolute inset-x-4 top-[22%] z-[12] mx-auto max-w-[30rem] text-[#ECE8F2] motion-reduce:relative motion-reduce:inset-x-auto motion-reduce:top-auto motion-reduce:mt-6 motion-reduce:px-4" style={{ visibility: 'hidden', opacity: 0 }}>
+      <ol aria-label="Herramientas y proyectos" className="relative grid gap-2.5 text-[clamp(0.75rem,3.4vw,0.94rem)] leading-tight before:absolute before:inset-y-0 before:left-1/2 before:w-px before:bg-[#F230D2]/40">
+        {[
+          ...groups.map((group) => ({
+            key: group[0].t,
+            content: <ul className="space-y-1">{group.map(({ t }) => <li key={t}>{t}</li>)}</ul>,
+          })),
+          ...CARDS.map(({ k, t, f, steps }) => ({
+            key: t,
+            content: <>
+              <span className="block text-[0.68rem] text-[#F5A7E9]">{k}</span>
+              <strong className="mt-0.5 block font-semibold">{t}</strong>
+              <span className="mt-0.5 block text-[0.72rem] text-[#ECE8F2]/80">{f ?? steps?.join(' · ')}</span>
+            </>,
+          })),
+        ].map(({ key, content }, index) => (
+          <li key={key} className="relative grid grid-cols-2 items-start">
+            <span aria-hidden className="absolute left-1/2 top-[0.42rem] h-1.5 w-1.5 -translate-x-1/2 rounded-full bg-[#F230D2]" />
+            <div className={index % 2 === 0 ? "relative col-start-2 pl-5 text-left" : "relative col-start-1 pr-5 text-right"}>
+              <span aria-hidden className={`absolute top-[0.58rem] h-px w-3 bg-[#F230D2]/65 ${index % 2 === 0 ? 'left-0' : 'right-0'}`} />
+              {content}
+            </div>
           </li>
         ))}
-      </ul>
+      </ol>
     </div>
   );
 });
