@@ -32,6 +32,8 @@ export interface ProjectItem {
   tags: string[];
   githubUrl?: string;
   demoUrl?: string;
+  videoUrl?: string;
+  pressUrl?: string;
   metrics?: string;
   award?: string;
 }
@@ -274,13 +276,13 @@ export const PORTFOLIO_DATA = {
     },
     {
       id: 'first-switch-banking',
-      title: 'Sistemas y Microservicios Bancarios',
+      title: 'Diseño de servicios bancarios y privacidad de usuarios',
       client: 'First-switch',
       year: '2025',
       description:
-        'Desarrollo fullstack de sistemas bancarios: diseño de arquitecturas, lógica de microservicios, sistemas de privacidad y gestión de usuarios, y administración de bases de datos con información sensible. Trabajo en equipo bajo SCRUM.',
-      category: 'Desarrollo Fullstack',
-      tags: ['PHP', 'Java', 'PostgreSQL', 'Microservicios', 'SCRUM'],
+        'Diseño e implementación de servicios bancarios con una arquitectura de microservicios. El proyecto aborda la gestión de usuarios y el tratamiento de información sensible mediante funciones de privacidad y una base de datos en PostgreSQL.',
+      category: 'Servicios bancarios y privacidad',
+      tags: ['PHP', 'Java', 'PostgreSQL', 'Microservicios'],
     },
     {
       id: 'robot-educativo',
@@ -291,7 +293,9 @@ export const PORTFOLIO_DATA = {
         'Prototipo de robot didáctico (coautoría) que estimula el pensamiento computacional en niños: robot móvil y tablero de programación tangible con bloques físicos que transmite los programas por ESP-NOW. Diseño de hardware y PCB (baterías 18650 con BMS, sensores ultrasónico, de sonido y táctil, pantalla TFT, motores y servos) y firmware en C++ con FreeRTOS.',
       category: 'Electrónica & Robótica',
       tags: ['ESP32-S3', 'FreeRTOS', 'ESP-NOW', 'C++', 'Diseño de PCB'],
-      award: 'Primer Lugar en Creatividad e Innovación · ExpoCILARA 2025',
+      award: 'Premio Creatividad e Innovación, mención Innovación · ExpoCILARA 2025',
+      videoUrl: 'https://www.youtube.com/shorts/M2-hxtBl6ao?feature=shared',
+      pressUrl: 'https://univnoticias.com/noticias-universitarias/unexpo-triunfa-con-3-proyectos-ganadores-en-la-expocilara-2025/',
     },
   ] as ProjectItem[],
 };

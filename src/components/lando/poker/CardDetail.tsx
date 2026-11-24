@@ -2,7 +2,7 @@ import { isLite } from '../../../lib/deviceProfile';
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import gsap from 'gsap';
-import { ArrowUpRight, X } from 'lucide-react';
+import { ArrowUpRight, Newspaper, Play, X } from 'lucide-react';
 import type { ProjectItem } from '../../../data/portfolioData';
 import { lockScroll, unlockScroll } from '../../../hooks/useSmoothScroll';
 import { CardFace } from './PlayingCard';
@@ -20,7 +20,7 @@ export const CardDetail: React.FC<{ p: ProjectItem; rank: string; onClose: () =>
   useEffect(() => {
     lockScroll();
     const prev = document.activeElement as HTMLElement | null;
-    closeBtn.current?.focus();
+    closeBtn.current?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', onKey);
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -46,7 +46,7 @@ export const CardDetail: React.FC<{ p: ProjectItem; rank: string; onClose: () =>
       role="dialog"
       aria-modal="true"
       aria-label={`${p.title} — ${p.client}`}
-      className="fixed inset-0 z-[300] overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-10"
+      className="fixed inset-0 z-[300] touch-pan-y overflow-y-auto overflow-x-hidden overscroll-contain px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-10"
       style={{
         background: 'rgba(3, 8, 6, 0.96)',
         backdropFilter: isLite() ? undefined : 'blur(16px)',
@@ -55,19 +55,19 @@ export const CardDetail: React.FC<{ p: ProjectItem; rank: string; onClose: () =>
       onClick={onClose}
       data-lenis-prevent
     >
-      <div className="min-h-full flex flex-col justify-center items-center py-6 sm:py-8">
+      <div className="min-h-full flex flex-col items-center py-3 sm:justify-center sm:py-8">
         <div
-          className="relative w-full max-w-5xl grid md:grid-cols-[minmax(0,340px)_1fr] gap-6 md:gap-14 items-center"
+          className="relative w-full max-w-5xl grid md:grid-cols-[minmax(0,340px)_1fr] gap-4 sm:gap-6 md:gap-14 items-center"
           onClick={(e) => e.stopPropagation()}
         >
-          <div ref={card} className="relative mx-auto w-[min(54vw,220px)] md:w-[min(72vw,340px)] aspect-[5/7]">
+          <div ref={card} aria-hidden="true" className="relative mx-auto w-[min(29vw,112px)] sm:w-[min(54vw,220px)] md:w-[min(72vw,340px)] aspect-[5/7]">
             <CardFace p={p} rank={rank} className="" sweep={false} />
           </div>
           <div className="pk-detail-txt text-white">
             <p className="font-mono text-xs tracking-[0.28em] uppercase" style={{ color: POKER.magenta }}>
               {rank} {SUIT} · {p.category} · {p.year}
             </p>
-            <h3 className="mt-3 sm:mt-4 font-poster uppercase text-[1.85rem] sm:text-[3.2rem] leading-[0.95]">{p.title}</h3>
+            <h3 className="mt-2 sm:mt-4 font-poster uppercase text-[1.5rem] sm:text-[3.2rem] leading-none">{p.title}</h3>
             <p className="mt-2 font-serifItalic italic font-semibold text-xl sm:text-2xl" style={{ color: POKER.magenta }}>
               {p.client}
             </p>
@@ -75,6 +75,20 @@ export const CardDetail: React.FC<{ p: ProjectItem; rank: string; onClose: () =>
               <p className="mt-3 sm:mt-4 inline-block font-mono text-[11px] tracking-[0.16em] uppercase px-3 py-1.5 border" style={{ borderColor: POKER.magenta, color: POKER.paper }}>
                 ★ {p.award}
               </p>
+            )}
+            {(p.videoUrl || p.pressUrl) && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {p.videoUrl && (
+                  <a href={p.videoUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-[#F230D2] px-3 text-sm font-semibold text-[#0A1A2B] hover:bg-[#F5A7E9]">
+                    <Play aria-hidden className="h-4 w-4" /> Ver el proyecto <ArrowUpRight aria-hidden className="h-4 w-4" />
+                  </a>
+                )}
+                {p.pressUrl && (
+                  <a href={p.pressUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-white/30 px-3 text-sm font-semibold text-[#ECE8F2] hover:border-[#F230D2]">
+                    <Newspaper aria-hidden className="h-4 w-4" /> Nota del premio <ArrowUpRight aria-hidden className="h-4 w-4" />
+                  </a>
+                )}
+              </div>
             )}
             <p className="mt-4 sm:mt-5 text-white/80 leading-relaxed text-sm sm:text-base max-w-xl" style={{ fontFamily: '"Mona Sans", sans-serif' }}>
               {p.description}

@@ -326,8 +326,12 @@ export const useAssistedScroll = () => {
       if (ok && e?.cancelable) e.preventDefault();
     };
 
+    // Un detalle de proyecto tiene su propio desplazamiento nativo.
+    const usesNativeScroll = (target: EventTarget | null) =>
+      target instanceof Element && !!target.closest('[data-lenis-prevent]');
+
     const onWheel = (e: WheelEvent) => {
-      if (!inZone()) return;
+      if (usesNativeScroll(e.target) || !inZone()) return;
       const lenis = getLenis();
       // dentro de la zona, Lenis nunca mueve la página por su cuenta
       const toHero = e.deltaY < 0 && !animating && window.scrollY <= (zoneStart() ?? 0) + 4;
@@ -370,11 +374,11 @@ export const useAssistedScroll = () => {
     };
 
     const onTouchStart = (e: TouchEvent) => {
-      touchY = e.touches[0]?.clientY ?? null;
+      touchY = usesNativeScroll(e.target) ? null : (e.touches[0]?.clientY ?? null);
       touchFired = false;
     };
     const onTouchMove = (e: TouchEvent) => {
-      if (!inZone() || touchY == null) return;
+      if (usesNativeScroll(e.target) || !inZone() || touchY == null) return;
       const dy = touchY - (e.touches[0]?.clientY ?? touchY);
       const atTop = !animating && window.scrollY <= (zoneStart() ?? 0) + 4 && dy < 0;
       if (!atTop) {
@@ -389,6 +393,7 @@ export const useAssistedScroll = () => {
 
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
+      if (usesNativeScroll(t)) return;
       if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
       if (!inZone()) return;
       const down = ['ArrowDown', 'PageDown', ' '].includes(e.key) && !e.shiftKey;
