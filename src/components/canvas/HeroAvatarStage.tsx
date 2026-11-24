@@ -1364,12 +1364,15 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
 // este render si el progreso no cambió. onReady se lee por ref (el padre la
 // pasa inline), así que su identidad no cuenta.
 const LitePortfolioTitle = ({ opacity }: { opacity: number }) => (
-  <div
-    className="absolute inset-x-0 top-[8%] z-10 text-center font-poster leading-none text-[#F230D2] pointer-events-none"
-    style={{ opacity, fontSize: 'clamp(2.7rem, 14vw, 8rem)', textShadow: '0 2px #0A1A2B, 0 0 12px #0A1A2B' }}
-  >
-    PORTAFOLIO
-  </div>
+  <img
+    src="/lettering/portafolio-lite.webp"
+    width={762}
+    height={148}
+    alt="Portafolio"
+    fetchPriority="high"
+    className="absolute inset-x-0 top-[7%] z-10 mx-auto w-[86%] max-w-[36rem] pointer-events-none"
+    style={{ opacity }}
+  />
 );
 
 const LiteHeroAvatar: React.FC<HeroAvatarStageProps> = ({ progress, onReady }) => {

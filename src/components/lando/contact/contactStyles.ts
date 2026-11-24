@@ -21,6 +21,7 @@ export const SCENE_CSS = `
    con clip-path: polygon (ver liquid.ts). NO se usa border-radius + overflow:hidden ni
    opacidad en ancestros de las capas de vidrio: rompen el recorte con forma de letra. */
 .ft-root.ft-live { height: var(--sh); }
+[data-lite] .ft-root.ft-live { overflow: visible; }
 .ft-root.ft-live .ft-stage { position: fixed; left: 0; right: 0; bottom: 0; height: var(--sh); visibility: hidden; pointer-events: none; }
 .ft-root.ft-live .ft-stage .ft-scene { pointer-events: auto; }
 /* piel del líquido: encima de la escena, sin eventos */

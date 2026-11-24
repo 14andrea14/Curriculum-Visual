@@ -443,9 +443,10 @@ export const WorkTrack: React.FC = () => {
   // Un gesto (rueda, deslizar, tecla) viaja a la siguiente parada con la duracion fija de
   // abajo. Escritorio: el tramo se mide en pantallas de scroll (t / 2.65 del pin) y se
   // busca ~1.2-1.4 s por pantalla; las revelaciones de a una carta son mas pausadas.
-  // En el layout apilado, el título encadena el recorrido por las cinco cartas.
+  // En teléfono, cada carta apilada tiene su propio reposo.
   useEffect(() => {
-    if (mode === 'static') return;
+    const phoneCards = isLite() && (mode === 'stack' || (mode === 'static' && !wide));
+    if (mode === 'static' && !phoneCards) return;
     const sec = section.current;
     if (!sec) return;
     if (mode === 'pin') {
@@ -467,20 +468,32 @@ export const WorkTrack: React.FC = () => {
         // (el As se levanta y se da vuelta boca abajo DENTRO del viaje hacia la carta sola: la parada siguiente es exp-card)
       ]);
     }
-    const lastCardRevealed = () => {
-      const card = sec.querySelector<HTMLElement>('#poker-last-card');
+    const cardRevealed = (selector: string) => () => {
+      const card = sec.querySelector<HTMLElement>(selector);
       if (!card) return null;
       const { top, height } = card.getBoundingClientRect();
       // El volteo termina cuando la carta alcanza el 30 % de la ventana.
       const inset = Math.min(window.innerHeight * 0.3, Math.max(16, (window.innerHeight - height) / 2));
       return Math.ceil(top + window.scrollY - inset);
     };
+    if (phoneCards) {
+      return registerStops('poker', [
+        { id: 'poker-m-title', y: () => sec.getBoundingClientRect().top + window.scrollY, desktop: 3.2, mobile: 2.4 },
+        ...Array.from({ length: Math.min(projects.length, 5) }, (_, i) => ({
+          id: 'poker-m-card-' + (i + 1),
+          y: cardRevealed('#poker-phone-card-' + (i + 1)),
+          desktop: 1.6,
+          mobile: 1.4,
+          upMobile: 1.4,
+        })),
+      ]);
+    }
     return registerStops('poker', [
       // titulo + pista, con la mesa ya encendida (entra desde la banda anterior)
       { id: 'poker-m-title', y: () => sec.getBoundingClientRect().top + window.scrollY, desktop: 3.2, mobile: 2.4, chain: true, skipUp: true },
-      { id: 'poker-m-hand', y: lastCardRevealed, desktop: 6.5, mobile: 6.5, upMobile: 5.5 },
+      { id: 'poker-m-hand', y: cardRevealed('#poker-last-card'), desktop: 6.5, mobile: 6.5, upMobile: 5.5 },
     ]);
-  }, [mode, stopsKey]);
+  }, [mode, stopsKey, wide, projects.length]);
 
   const pin = mode === 'pin';
   const row = pin || (mode === 'static' && wide);
@@ -671,7 +684,7 @@ export const WorkTrack: React.FC = () => {
               {hand.map((p, i) => (
                 <PlayingCard
                   key={p.id}
-                  id={i === hand.length - 1 ? 'poker-last-card' : undefined}
+                  id={isLite() && !row ? 'poker-phone-card-' + (i + 1) : i === hand.length - 1 ? 'poker-last-card' : undefined}
                   p={p}
                   rank={RANKS[i]}
                   index={i}

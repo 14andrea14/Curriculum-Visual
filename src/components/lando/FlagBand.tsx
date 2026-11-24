@@ -4,7 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { CircuitBg } from './shared';
-import { FlagExtras, type ExtrasApi } from './flagband/FlagExtras';
+import { FlagExtras, FlagExtrasLite, type ExtrasApi } from './flagband/FlagExtras';
 import { registerStops } from '../../lib/assistedScroll';
 import { registerWarmup } from '../../lib/preload';
 import { registerPaintWarmup } from './warmup';
@@ -296,6 +296,7 @@ const posesKeep: HTMLImageElement[] = [];
 const mod = (n: number, m: number) => ((n % m) + m) % m;
 
 export const FlagBand: React.FC = () => {
+  const liteDetailsRef = useRef<HTMLDivElement>(null);
   const extrasRef = useRef<ExtrasApi | null>(null);
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -727,6 +728,13 @@ export const FlagBand: React.FC = () => {
     // ---------- pintado de la corriente (solo cuando P cambia) ----------
     let recedeK = -1;
     const paintCurrent = () => {
+      const details = liteDetailsRef.current;
+      if (details) {
+        // El bloque está entero durante la parada de lectura y cede el paso a la foto.
+        const alpha = reduce ? 1 : ramp(P, 0.19, 0.44) * (1 - ramp(P, 0.55, HAND1 - 0.01));
+        details.style.opacity = alpha.toFixed(3);
+        details.style.visibility = alpha > 0.01 ? 'visible' : 'hidden';
+      }
       // defensivo: no se pinta hasta que measure() armó TODAS las rutas (p. ej. tras un
       // recambio en caliente o si un refresh llega antes de la primera medida)
       if (!ROUTES.every((r) => geo.routes[r]) || geo.pads.some((pd) => !geo.routes[pd.at])) {
@@ -1172,6 +1180,8 @@ export const FlagBand: React.FC = () => {
             <span ref={dashRRef} className="inline-block w-6 h-px" style={{ background: ACCENT, transformOrigin: '0% 50%', transform: 'scaleX(0)' }} />
           </span>
         </p>
+
+        {isLite() && <FlagExtrasLite ref={liteDetailsRef} />}
 
         {/* escenario: filas gigantes + pistas + foto por delante */}
         <div ref={stageRef} className="relative flex-1 flex flex-col justify-center py-[10vh] md:py-[8vh]">

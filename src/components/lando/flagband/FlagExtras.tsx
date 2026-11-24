@@ -58,6 +58,25 @@ const CARDS: { k: string; t: string; f?: string; steps?: string[] }[] = [
   { k: 'IA & automatización', t: 'Chats, automatizaciones y bots funcionales', f: 'n8n · LLMs · WhatsApp' },
 ];
 
+export const FlagExtrasLite = React.forwardRef<HTMLDivElement>(function FlagExtrasLite(_, ref) {
+  return (
+    <div ref={ref} className="absolute left-4 right-4 top-[23%] z-[12] mx-auto motion-reduce:left-auto motion-reduce:right-auto max-w-[34rem] border border-white/15 bg-[#0A1A2B]/95 px-4 py-3 text-[#ECE8F2] shadow-[0_6px_24px_#07060B] rounded-2xl motion-reduce:relative motion-reduce:top-auto motion-reduce:mt-6" style={{ visibility: 'hidden', opacity: 0 }}>
+      <ul aria-label="Herramientas y habilidades" className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-[clamp(0.69rem,3vw,0.9rem)] leading-tight pb-3">
+        {WORDS.map(({ t }) => <li key={t}>{t}</li>)}
+      </ul>
+      <ul className="grid gap-y-2 border-t border-white/15 pt-2.5">
+        {CARDS.map(({ k, t, f, steps }) => (
+          <li key={t}>
+            <span className="block text-[0.64rem] leading-tight text-[#F5A7E9]">{k}</span>
+            <span className="block text-[clamp(0.77rem,3.4vw,1rem)] font-semibold leading-tight">{t}</span>
+            <span className="block text-[clamp(0.68rem,2.9vw,0.87rem)] leading-snug text-[#ECE8F2]/75">{f ?? steps?.join(' · ')}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+});
+
 const CSS = `
 .fbx-w { position:absolute; left:0; top:0; white-space:nowrap; line-height:1; will-change:transform,opacity,filter; transform-origin: 100% 60%; }
 .fbx-w .fbx-t { display:block; }

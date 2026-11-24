@@ -46,7 +46,7 @@ export const CardDetail: React.FC<{ p: ProjectItem; rank: string; onClose: () =>
       role="dialog"
       aria-modal="true"
       aria-label={`${p.title} — ${p.client}`}
-      className="fixed inset-0 z-[300] overflow-y-auto overflow-x-hidden p-4 sm:p-10"
+      className="fixed inset-0 z-[300] overflow-y-auto overflow-x-hidden overscroll-contain p-4 sm:p-10"
       style={{
         background: 'rgba(3, 8, 6, 0.96)',
         backdropFilter: isLite() ? undefined : 'blur(16px)',

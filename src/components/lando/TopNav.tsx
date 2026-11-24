@@ -1,3 +1,4 @@
+import { isLite } from '../../lib/deviceProfile';
 import React, { useEffect, useRef, useState } from 'react';
 import { useSceneScroll } from '../../hooks/useSceneScroll';
 import { scrollToSection } from '../../hooks/useSmoothScroll';
@@ -19,7 +20,8 @@ export const TopNav: React.FC = () => {
   const [visible, setVisible] = useState(false);
   // no es fijo: se va hacia arriba con el manifiesto al terminar la portada
   const sceneRef = useRef<HTMLDivElement>(null);
-  useSceneScroll(sceneRef);
+  const lite = isLite();
+  useSceneScroll(sceneRef, lite);
 
   useEffect(() => {
     // Un solo ScrollTrigger (sin IntersectionObserver ni getBoundingClientRect por
@@ -57,6 +59,7 @@ export const TopNav: React.FC = () => {
       <header
         className="w-full flex justify-center sm:justify-start px-4 sm:px-8 pt-5 sm:pt-6 pointer-events-none"
         style={{
+          paddingTop: lite ? 'max(1.75rem, calc(env(safe-area-inset-top, 0px) + 0.5rem))' : undefined,
           opacity: visible ? 1 : 0,
           transform: visible ? 'translateY(0)' : 'translateY(-14px)',
           transition: 'opacity 500ms cubic-bezier(0.65,0.05,0,1), transform 500ms cubic-bezier(0.65,0.05,0,1)',
@@ -67,6 +70,7 @@ export const TopNav: React.FC = () => {
           className="pointer-events-auto min-h-[48px] h-12 flex items-center justify-center focus:outline-none"
           aria-label="Alejandra Arismendi, ir al inicio"
           style={{ pointerEvents: visible ? 'auto' : 'none' }}
+          tabIndex={visible ? undefined : -1}
         >
           {/* Letra de caramelo: tamaño grande y centrado en celular (pedido explícito) */}
           <CandyName visible={visible} className="text-[clamp(1.95rem,7.5vw,2.5rem)] sm:text-[clamp(1.5rem,2.2vw,2.2rem)] tracking-[0.01em]" />

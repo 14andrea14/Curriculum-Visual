@@ -27,6 +27,7 @@ gsap.registerPlugin(ScrollTrigger);
 export const ContactFooter: React.FC = () => {
   const { profile } = PORTFOLIO_DATA;
   const rootRef = useRef<HTMLElement>(null);
+  const surfaceRef = useRef<SVGPolylineElement>(null);
   const ctrlRef = useRef<SceneCtrl | null>(null);
   // cielo y colina (2560x1430): decodificados detrás de la carga, no al llegar al pie
   useEffect(() => registerImageWarmup('footer-img', ['/footer/sky.webp', '/footer/hills.webp']), []);
@@ -88,15 +89,38 @@ export const ContactFooter: React.FC = () => {
       if (canvas) {
         liquid = createLiquid({ stage, canvas, read, span: () => st.end - st.start, onFrame });
       } else {
+        let lastProgress = -1;
+        const surface = surfaceRef.current;
+        const setClip = (clip: string) => {
+          stage.style.setProperty('-webkit-clip-path', clip);
+          stage.style.clipPath = clip;
+        };
         const reveal = () => {
           const p = Math.max(0, Math.min(1, read()));
+          if (p === lastProgress) return;
+          lastProgress = p;
           stage.style.visibility = p > 0 ? 'visible' : 'hidden';
-          stage.style.clipPath = p >= 1 ? '' : 'inset(' + (100 * (1 - p)) + '% 0 0)';
+          if (p > 0 && p < 1) {
+            // La onda se mueve solo con el scroll y se aplana en los extremos.
+            const amplitude = 3.1 * Math.sin(Math.PI * p);
+            const points = Array.from({ length: 25 }, (_, i) => {
+              const x = i * 100 / 24;
+              const y = 100 * (1 - p) + amplitude * Math.sin(i / 24 * Math.PI * 4 + p * Math.PI * 3);
+              return [x.toFixed(2), y.toFixed(2)];
+            });
+            const clip = 'polygon(' + points.map(([x, y]) => x + '% ' + y + '%').join(', ') + ', 100% 100%, 0% 100%)';
+            setClip(clip);
+            surface?.setAttribute('points', points.map((point) => point.join(',')).join(' '));
+          } else {
+            setClip('');
+            surface?.removeAttribute('points');
+          }
           onFrame(p);
         };
         liquid = { wake: reveal, destroy: () => {
           stage.style.visibility = '';
-          stage.style.clipPath = '';
+          setClip('');
+          surface?.removeAttribute('points');
         } };
         reveal();
       }
@@ -143,6 +167,11 @@ export const ContactFooter: React.FC = () => {
           contact={{ email: profile.email, linkedin: profile.linkedin, github: profile.github, whatsapp: profile.whatsapp, phone: profile.phone }}
           ctrlRef={ctrlRef}
         />
+        {isLite() && (
+          <svg aria-hidden viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 z-[20] h-full w-full pointer-events-none">
+            <polyline ref={surfaceRef} fill="none" stroke="#ECE8F2" strokeOpacity="0.8" strokeWidth="4" vectorEffect="non-scaling-stroke" />
+          </svg>
+        )}
       </div>
       {/* piel del líquido: borde translúcido, brillo, burbujas y gotas (un solo canvas 2D) */}
       {!isLite() && <canvas aria-hidden className="ft-liquid" />}

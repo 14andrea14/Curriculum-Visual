@@ -16,7 +16,7 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger';
 // el documento se mide SOLO al montar / redimensionar / refrescar ScrollTrigger, y por
 // cuadro se usa el scroll que ScrollTrigger ya leyó (cacheado, sin forzar layout).
 // El resultado (transform / visibility) es el mismo.
-export function useSceneScroll(ref: React.RefObject<HTMLElement>) {
+export function useSceneScroll(ref: React.RefObject<HTMLElement>, keepInFrame = false) {
   useEffect(() => {
     let raf = 0;
     // borde superior del ancla en coordenadas del documento (null = sin medir)
@@ -31,11 +31,15 @@ export function useSceneScroll(ref: React.RefObject<HTMLElement>) {
       const v = off < -window.innerHeight * 0.5 ? 'hidden' : '';
       // oculto y sigue oculto: el transform no se ve, no hace falta escribirlo cada cuadro
       if (!(v === 'hidden' && lastV === 'hidden')) {
-        const t = off < 0 ? `translate3d(0, ${off.toFixed(1)}px, 0)` : '';
+        const t = !keepInFrame && off < 0 ? `translate3d(0, ${off.toFixed(1)}px, 0)` : '';
         if (t !== lastT) {
           el.style.transform = t;
           lastT = t;
         }
+      }
+      if (keepInFrame) {
+        const opacity = String(Math.max(0, Math.min(1, 2 + off / (window.innerHeight * 0.25))));
+        if (el.style.opacity !== opacity) el.style.opacity = opacity;
       }
       if (v !== lastV) {
         el.style.visibility = v;
@@ -81,5 +85,5 @@ export function useSceneScroll(ref: React.RefObject<HTMLElement>) {
       window.clearTimeout(late);
       if (raf) cancelAnimationFrame(raf);
     };
-  }, [ref]);
+  }, [ref, keepInFrame]);
 }
