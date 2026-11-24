@@ -79,17 +79,22 @@ html.lenis, html.lenis body {
   overflow: hidden;
 }
 
-/* PORTADA BLOQUEADA (escritorio): se conserva la barra de scroll. Con Lenis detenido
-   el overflow:hidden de arriba la quitaba y, al soltar la portada (fin del guiño del
-   primer clic), volvía: el ancho de la página cambiaba ~11-15 px y TODOS los
-   ResizeObserver saltaban a la vez — entre ellos el del nombre del pie (FooterScene),
-   que llama a ScrollTrigger.refresh(): medido una tarea de 540-770 ms con la figura,
-   las letras y el cursor congelados. (scrollbar-gutter no sirve: Chrome no reserva el
-   hueco en el viewport con overflow:hidden.) Rueda, teclas y toque ya los bloquea la
-   portada, y arrastrar la barra lo devuelve a la pose (HeroSection, handleScrollSettle).
-   La clase la pone/quita HeroSection junto con el bloqueo. Móvil: sin cambios. */
-@media (min-width: 1024px) {
-  html.lenis.lenis-stopped.hero-cover-lock {
+/* LENIS DETENIDO EN ESCRITORIO: la barra de scroll NO se quita nunca. Con Lenis detenido
+   (cada viaje del scroll asistido, cada zoom de nota/carta y la portada bloqueada) el
+   overflow:hidden de arriba la quitaba y al soltarlo volvía: el ancho de la página
+   cambiaba ~10-11 px, ScrollTrigger recalculaba todo y saltaban TODOS los
+   ResizeObserver a la vez — entre ellos el del nombre del pie (FooterScene), que llama a
+   ScrollTrigger.refresh(): medido ~0,5 s de recálculo de estilos/layout por viaje, y de
+   ahí también el bug de opacidad de los post-its de Formación. (scrollbar-gutter no sirve:
+   Chrome no reserva el hueco en el viewport con overflow:hidden.) Con overflow-y:scroll
+   la barra (la misma rosa fina de arriba) se queda y el ancho es constante. El bloqueo
+   del gesto ya no depende del CSS: rueda y teclas las cortan la portada, el motor de
+   scroll asistido y el guardián del zoom (ZoomNote); arrastrar la barra de la portada lo
+   devuelve a la pose (HeroSection, handleScrollSettle). Solo punteros finos (ratón /
+   trackpad): en móvil las barras son superpuestas y no ocupan ancho, y ahí el
+   overflow:hidden SÍ debe seguir bloqueando el desplazamiento táctil. */
+@media (hover: hover) and (pointer: fine) {
+  html.lenis.lenis-stopped {
     overflow-x: hidden;
     overflow-y: scroll;
   }
@@ -367,4 +372,88 @@ html.lenis, html.lenis body {
     url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='120' height='120' filter='url(%23n)' opacity='0.35'/></svg>");
   mix-blend-mode: overlay;
   opacity: calc(0.55 + 0.35 * var(--glare, 0));
+}
+
+/* En el modo ligero, los pins y fundidos siguen activos. Las capas decorativas
+   no necesitan promoción permanente ni filtros sobre el fondo. */
+[data-lite] * {
+  will-change: auto !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+[data-lite] .orbit-legend,
+[data-lite] .cms-grain {
+  display: none;
+}
+[data-lite] .gx-orbit,
+[data-lite] .gx-pulse,
+[data-lite] .gx-twinkle,
+[data-lite] .gx-blink,
+[data-lite] .gx-bob,
+[data-lite] .gx-drift,
+[data-lite] .gx-tapicon,
+[data-lite] .gx-hintglow,
+[data-lite] .cms-bokeh,
+[data-lite] .poke-card,
+[data-lite] .poke-holo,
+[data-lite] .fm-sway,
+[data-lite] [style*="marquee-x"],
+[data-lite] [style*="stamp-spin"],
+[data-lite] [style*="drip-stretch"],
+[data-lite] [style*="drip-fall"],
+[data-lite] [style*="aurora-"],
+[data-lite] [style*="grid-run"] {
+  animation: none !important;
+}
+[data-lite] .ft-glass {
+  background-color: rgba(255, 255, 255, 0.45);
+}
+
+[data-lite] .pk-slot,
+[data-lite] .pk-deal,
+[data-lite] .pk-hover,
+[data-lite] .pk-idle,
+[data-lite] .pk-flip {
+  transform-style: flat;
+}
+[data-lite] .pk-front,
+[data-lite] .pk-flip.pk-up {
+  transform: none;
+}
+[data-lite] .pk-flip:not(.pk-up) .pk-front {
+  opacity: 0;
+  visibility: hidden;
+}
+[data-lite] .pk-ready .pk-idle,
+[data-lite] .pk-ready .pk-idle::before,
+[data-lite] .pk-pulse,
+[data-lite] .pk-tap {
+  animation: none;
+}
+
+/* Mantiene la altura de los escenarios cuando el navegador aún no reconoce
+   las unidades dinámicas de viewport. */
+@supports not (height: 100dvh) {
+  [data-lite] #hero .h-\[100dvh\],
+  [data-lite] #manifiesto {
+    height: 100vh;
+  }
+  [data-lite] #manifiesto {
+    margin-top: -100vh;
+  }
+}
+@supports not (height: 100svh) {
+  [data-lite] #banderin,
+  [data-lite] #skills .min-h-\[100svh\] {
+    min-height: 100vh;
+  }
+  [data-lite] #skills .h-\[100svh\] {
+    height: 100vh;
+  }
+  [data-lite] .ft-root {
+    --sh: max(100vh, 640px);
+  }
+  [data-lite] .ft-scene {
+    --hh: 52vh;
+  }
 }

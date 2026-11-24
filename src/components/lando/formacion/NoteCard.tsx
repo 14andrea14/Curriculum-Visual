@@ -40,7 +40,7 @@ const PIN_BG: Record<DrawingDef['pin'], string> = {
 export const DrawingCard: React.FC<{ art: DrawingDef; pinned?: boolean; zoom?: boolean }> = ({ art, pinned = true, zoom = false }) => (
   <div className="relative">
     <img
-      src={art.src}
+      decoding="async" src={art.src}
       alt={art.alt}
       width={art.w}
       height={art.h}

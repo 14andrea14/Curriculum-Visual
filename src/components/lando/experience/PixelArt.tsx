@@ -1,3 +1,4 @@
+import { isLite } from '../../../lib/deviceProfile';
 import React, { useMemo } from 'react';
 import { GAME, seeded } from './utils';
 
@@ -27,42 +28,54 @@ function cells(g: Grid) {
   g.forEach((row, y) => row.split('').forEach((c, x) => c !== '.' && out.push({ x, y, c })));
   return out;
 }
-const STAR_CELLS = cells(STAR);
-const SPARK_CELLS = cells(SPARK);
+// En móvil, los trazados agrupan los píxeles y conservan el orden del brillo.
+function sprite(grid: Grid) {
+  const pixels = cells(grid);
+  const pixel = (x: number, y: number) => `M${x} ${y}h1.02v1.02h-1.02Z`;
+  const face: { shine: boolean; d: string }[] = [];
+  for (const { x, y, c } of pixels) {
+    const shine = c === 'w';
+    const last = face[face.length - 1];
+    if (last?.shine === shine) last.d += pixel(x, y);
+    else face.push({ shine, d: pixel(x, y) });
+  }
+  return { cells: pixels, size: grid.length, face, shade: pixels.map(({ x, y }) => pixel(x + 1, y + 1)).join('') };
+}
+const SPRITES = { star: sprite(STAR), spark: sprite(SPARK) };
 
 // Sprite de píxeles con sombra dura (1 píxel abajo-derecha)
 const Sprite: React.FC<{
-  data: { x: number; y: number; c: string }[];
-  w: number;
-  h: number;
+  kind: keyof typeof SPRITES;
   color: string;
   shade?: string | null;
   className?: string;
   style?: React.CSSProperties;
-}> = ({ data, w, h, color, shade = GAME.plum, className, style }) => (
+}> = ({ kind, color, shade = GAME.plum, className, style }) => (
   <svg
     aria-hidden
-    viewBox={`0 0 ${w + 1} ${h + 1}`}
+    viewBox={`0 0 ${SPRITES[kind].size + 1} ${SPRITES[kind].size + 1}`}
     className={className}
     style={{ shapeRendering: 'crispEdges', overflow: 'visible', ...style }}
   >
-    {shade && data.map((p, i) => <rect key={'s' + i} x={p.x + 1} y={p.y + 1} width={1.02} height={1.02} fill={shade} />)}
-    {data.map((p, i) => (
-      <rect key={i} x={p.x} y={p.y} width={1.02} height={1.02} fill={p.c === 'w' ? '#FFFFFF' : color} />
-    ))}
+    {shade && (isLite()
+      ? <path d={SPRITES[kind].shade} fill={shade} />
+      : SPRITES[kind].cells.map(({ x, y }, i) => <rect key={'s' + i} x={x + 1} y={y + 1} width={1.02} height={1.02} fill={shade} />))}
+    {isLite()
+      ? SPRITES[kind].face.map(({ d, shine }, i) => <path key={i} d={d} fill={shine ? '#FFFFFF' : color} />)
+      : SPRITES[kind].cells.map(({ x, y, c }, i) => <rect key={i} x={x} y={y} width={1.02} height={1.02} fill={c === 'w' ? '#FFFFFF' : color} />)}
   </svg>
 );
 
 export const PixelStar: React.FC<{ color?: string; shade?: string | null; className?: string; style?: React.CSSProperties }> = ({
   color = GAME.star,
   ...rest
-}) => <Sprite data={STAR_CELLS} w={9} h={9} color={color} {...rest} />;
+}) => <Sprite kind="star" color={color} {...rest} />;
 
 export const PixelSpark: React.FC<{ color?: string; shade?: string | null; className?: string; style?: React.CSSProperties }> = ({
   color = '#FFFFFF',
   shade = null,
   ...rest
-}) => <Sprite data={SPARK_CELLS} w={7} h={7} color={color} shade={shade} {...rest} />;
+}) => <Sprite kind="spark" color={color} shade={shade} {...rest} />;
 
 // Nube inflada: cuerpo blanco + panza rosada (sombra) + brillo
 export const PuffCloud: React.FC<{ className?: string; style?: React.CSSProperties; tint?: string }> = ({

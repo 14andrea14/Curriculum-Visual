@@ -1,5 +1,8 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { useHeroFrames } from '../../hooks/useHeroFrames';
+import { isLite, hasWebGL2 } from '../../lib/deviceProfile';
+import { SafeBoundary } from '../ui/SafeBoundary';
+import { reportLoad } from '../../lib/preload';
 import { GlassWord } from './GlassWord';
 import { Letters3D } from './Letters3D';
 import { CircuitBg } from '../lando/shared';
@@ -538,6 +541,9 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
     // (la imagen de la sonrisa ya no se usa: en el pico se ve solo el video)
     return () => {
       alive = false;
+      const pose = stillsRef.current.pose;
+      if (pose && !(pose instanceof HTMLImageElement)) pose.close();
+      stillsRef.current.pose = null;
     };
   }, []);
 
@@ -653,7 +659,7 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
 
     const MW = 192;
     const MH = 108;
-    const field = new Float32Array(MW * MH);
+    // campo del tinte en bytes (la textura que lee el shader); lo escribe stepFluid
     const bytes = new Uint8Array(MW * MH);
     const mkTex = (unit: number, filter: number) => {
       const t = gl.createTexture()!;
@@ -747,20 +753,79 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
     // ser un sello circular que se encoge.
     const GW = MW;
     const GH = MH;
-    const SZ = (GW + 2) * (GH + 2);
-    const IX = (x: number, y: number) => x + (GW + 2) * y;
+    const W2 = GW + 2;
+    const SZ = W2 * (GH + 2);
     const fu = new Float32Array(SZ);
     const fv = new Float32Array(SZ);
     const fu0 = new Float32Array(SZ);
     const fv0 = new Float32Array(SZ);
     const fd = new Float32Array(SZ);
     const fd0 = new Float32Array(SZ);
-    const fp = new Float32Array(SZ);
-    const fdiv = new Float32Array(SZ);
+    // presión y divergencia en doble precisión: el bucle de Gauss-Seidel lee/escribe
+    // sin convertir float32<->float64 (mismo resultado, ~30 % menos tiempo)
+    const fp = new Float64Array(SZ);
+    const fdiv = new Float64Array(SZ);
+    // REGIÓN ACTIVA. El tinte y la velocidad solo valen algo cerca del rastro del cursor:
+    // el resto del campo es cero. Se divide en mosaicos de 8x8 celdas; solo se simulan los
+    // mosaicos "calientes" (con tinte > EPS_D o velocidad > EPS_V) y sus vecinos (la
+    // proyección esparce la presión unas celdas, que decae 4x por celda). Por debajo de
+    // los umbrales el valor es invisible (el tinte < 0.0027 ya se redondea a 0 en el byte
+    // de la textura; una velocidad < 0.2 celdas/s mueve el tinte < 1 px en su vida), y esos
+    // mosaicos se ponen a cero. Medido contra el solver completo con el mismo recorrido de
+    // cursor: diferencia máxima de 2 niveles de 255 en el campo, en < 1 % de las celdas.
+    const EPS_D = 0.0005;
+    const EPS_V = 0.2;
+    const TS = 8;
+    const TW = Math.ceil(GW / TS);
+    const TH = Math.ceil(GH / TS);
+    let hot = new Uint8Array(TW * TH);
+    let hotNext = new Uint8Array(TW * TH);
+    const reg = new Uint8Array(TW * TH);
+    // tramos (fila, x ini, x fin) de la región, reconstruidos en cada paso
+    const segY = new Int16Array(GH * TW);
+    const segA = new Int16Array(GH * TW);
+    const segB = new Int16Array(GH * TW);
+    let nSeg = 0;
+    const buildRegion = () => {
+      reg.fill(0);
+      for (let ty = 0; ty < TH; ty++) {
+        for (let tx = 0; tx < TW; tx++) {
+          if (!hot[ty * TW + tx]) continue;
+          const ky1 = Math.min(TH - 1, ty + 1);
+          const kx1 = Math.min(TW - 1, tx + 1);
+          for (let ky = Math.max(0, ty - 1); ky <= ky1; ky++) for (let kx = Math.max(0, tx - 1); kx <= kx1; kx++) reg[ky * TW + kx] = 1;
+        }
+      }
+      nSeg = 0;
+      for (let ty = 0; ty < TH; ty++) {
+        const y0 = ty * TS + 1;
+        const y1 = Math.min(GH, y0 + TS - 1);
+        let tx = 0;
+        while (tx < TW) {
+          if (!reg[ty * TW + tx]) {
+            tx++;
+            continue;
+          }
+          const ta = tx;
+          while (tx < TW && reg[ty * TW + tx]) tx++;
+          const xa = ta * TS + 1;
+          const xb = Math.min(GW, tx * TS);
+          for (let y = y0; y <= y1; y++) {
+            segY[nSeg] = y;
+            segA[nSeg] = xa;
+            segB[nSeg] = xb;
+            nSeg++;
+          }
+        }
+      }
+    };
     const advect = (dst: Float32Array, src: Float32Array, dt: number) => {
-      for (let y = 1; y <= GH; y++) {
-        for (let x = 1; x <= GW; x++) {
-          const i = IX(x, y);
+      for (let s = 0; s < nSeg; s++) {
+        const y = segY[s];
+        const row = y * W2;
+        const xb = segB[s];
+        for (let x = segA[s]; x <= xb; x++) {
+          const i = row + x;
           let px = x - dt * fu[i];
           let py = y - dt * fv[i];
           px = px < 0.5 ? 0.5 : px > GW + 0.5 ? GW + 0.5 : px;
@@ -769,33 +834,44 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
           const y0 = py | 0;
           const sx = px - x0;
           const sy = py - y0;
-          const j = IX(x0, y0);
-          dst[i] = (src[j] * (1 - sx) + src[j + 1] * sx) * (1 - sy) + (src[j + GW + 2] * (1 - sx) + src[j + GW + 3] * sx) * sy;
+          const j = x0 + W2 * y0;
+          dst[i] = (src[j] * (1 - sx) + src[j + 1] * sx) * (1 - sy) + (src[j + W2] * (1 - sx) + src[j + W2 + 1] * sx) * sy;
         }
       }
     };
     const project = () => {
-      for (let y = 1; y <= GH; y++) {
-        for (let x = 1; x <= GW; x++) {
-          const i = IX(x, y);
-          fdiv[i] = -0.5 * (fu[i + 1] - fu[i - 1] + fv[i + GW + 2] - fv[i - GW - 2]);
+      for (let s = 0; s < nSeg; s++) {
+        const row = segY[s] * W2;
+        const xb = row + segB[s];
+        for (let i = row + segA[s]; i <= xb; i++) {
+          fdiv[i] = -0.5 * (fu[i + 1] - fu[i - 1] + fv[i + W2] - fv[i - W2]);
           fp[i] = 0;
         }
       }
       for (let k = 0; k < 8; k++) {
-        for (let y = 1; y <= GH; y++) {
-          for (let x = 1; x <= GW; x++) {
-            const i = IX(x, y);
-            fp[i] = (fdiv[i] + fp[i - 1] + fp[i + 1] + fp[i - GW - 2] + fp[i + GW + 2]) * 0.25;
+        for (let s = 0; s < nSeg; s++) {
+          const row = segY[s] * W2;
+          const xb = row + segB[s];
+          // el vecino izquierdo (ya actualizado en este barrido) viaja en un registro
+          let left = fp[row + segA[s] - 1];
+          for (let i = row + segA[s]; i <= xb; i++) {
+            left = (fdiv[i] + left + fp[i + 1] + fp[i - W2] + fp[i + W2]) * 0.25;
+            fp[i] = left;
           }
         }
       }
-      for (let y = 1; y <= GH; y++) {
-        for (let x = 1; x <= GW; x++) {
-          const i = IX(x, y);
+      for (let s = 0; s < nSeg; s++) {
+        const row = segY[s] * W2;
+        const xb = row + segB[s];
+        for (let i = row + segA[s]; i <= xb; i++) {
           fu[i] -= 0.5 * (fp[i + 1] - fp[i - 1]);
-          fv[i] -= 0.5 * (fp[i + GW + 2] - fp[i - GW - 2]);
+          fv[i] -= 0.5 * (fp[i + W2] - fp[i - W2]);
         }
+      }
+      // la presión vuelve a cero en la región: fuera de ella debe valer 0 en el próximo paso
+      for (let s = 0; s < nSeg; s++) {
+        const row = segY[s] * W2;
+        fp.fill(0, row + segA[s], row + segB[s] + 1);
       }
     };
     // el cursor inyecta velocidad (celdas/s) y tinte en un disco suave
@@ -806,12 +882,15 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
       const x1 = Math.min(GW, Math.ceil(cx + rxCells));
       const y0 = Math.max(1, Math.floor(cy - ryCells));
       const y1 = Math.min(GH, Math.ceil(cy + ryCells));
+      if (x1 < x0 || y1 < y0) return;
+      // los mosaicos tocados quedan calientes
+      for (let ty = (y0 - 1) >> 3; ty <= (y1 - 1) >> 3; ty++) for (let tx = (x0 - 1) >> 3; tx <= (x1 - 1) >> 3; tx++) hot[ty * TW + tx] = 1;
       for (let y = y0; y <= y1; y++) {
         for (let x = x0; x <= x1; x++) {
           const d = Math.hypot((x - cx) / rxCells, (y - cy) / ryCells);
           if (d >= 1) continue;
           const w = (1 - d) * (1 - d);
-          const i = IX(x, y);
+          const i = x + W2 * y;
           fu[i] += vx * w * 0.3;
           fv[i] += vy * w * 0.3;
           fd[i] = Math.min(1.3, fd[i] + dye * w * 0.75);
@@ -820,32 +899,70 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
     };
     const cursorVel = { x: 0, y: 0 };
     const stepFluid = (dt: number) => {
+      buildRegion();
       // velocidad: advección + proyección (incompresible) + disipación
       advect(fu0, fu, dt);
       advect(fv0, fv, dt);
-      fu.set(fu0);
-      fv.set(fv0);
+      for (let s = 0; s < nSeg; s++) {
+        const a = segY[s] * W2 + segA[s];
+        const b = segY[s] * W2 + segB[s] + 1;
+        fu.set(fu0.subarray(a, b), a);
+        fv.set(fv0.subarray(a, b), a);
+      }
       project();
       const kv = Math.exp(-dt * 2.4);
-      for (let i = 0; i < SZ; i++) {
-        fu[i] *= kv;
-        fv[i] *= kv;
+      for (let s = 0; s < nSeg; s++) {
+        const row = segY[s] * W2;
+        const xb = row + segB[s];
+        for (let i = row + segA[s]; i <= xb; i++) {
+          fu[i] *= kv;
+          fv[i] *= kv;
+        }
       }
       // tinte: viaja con el flujo y se disipa
       advect(fd0, fd, dt);
-      fd.set(fd0);
       const kd = Math.exp(-dt / 0.42);
       let any = false;
-      for (let y = 1; y <= GH; y++) {
-        for (let x = 1; x <= GW; x++) {
-          const i = IX(x, y);
-          let v = fd[i] * kd - 0.07 * dt;
+      hotNext.fill(0);
+      for (let s = 0; s < nSeg; s++) {
+        const y = segY[s];
+        const row = y * W2;
+        const trow = ((y - 1) >> 3) * TW;
+        const orow = (y - 1) * MW - 1;
+        const xb = segB[s];
+        for (let x = segA[s]; x <= xb; x++) {
+          const i = row + x;
+          let v = fd0[i] * kd - 0.07 * dt;
           if (v < 0) v = 0;
           fd[i] = v;
-          if (v > 0.002) any = true;
-          field[(y - 1) * MW + (x - 1)] = v;
+          const q = fd[i];
+          if (q > 0.002) any = true;
+          bytes[orow + x] = Math.min(255, Math.round((q / 1.4) * 255));
+          const u = fu[i];
+          const w = fv[i];
+          if (q > EPS_D || u > EPS_V || u < -EPS_V || w > EPS_V || w < -EPS_V) hotNext[trow + ((x - 1) >> 3)] = 1;
         }
       }
+      // los mosaicos de la región que ya no están calientes quedan en cero
+      for (let ty = 0; ty < TH; ty++) {
+        for (let tx = 0; tx < TW; tx++) {
+          const t = ty * TW + tx;
+          if (!reg[t] || hotNext[t]) continue;
+          const xa = tx * TS + 1;
+          const xb = Math.min(GW, xa + TS - 1);
+          for (let y = ty * TS + 1, y1 = Math.min(GH, y + TS - 1); y <= y1; y++) {
+            const a = y * W2 + xa;
+            const b = y * W2 + xb + 1;
+            fu.fill(0, a, b);
+            fv.fill(0, a, b);
+            fd.fill(0, a, b);
+            bytes.fill(0, (y - 1) * MW + xa - 1, (y - 1) * MW + xb);
+          }
+        }
+      }
+      const tmp = hot;
+      hot = hotNext;
+      hotNext = tmp;
       return any;
     };
 
@@ -877,7 +994,8 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
           canvas.style.filter = '';
           showAvatar();
         }
-        field.fill(0);
+        bytes.fill(0);
+        hot.fill(0);
         fd.fill(0);
         fu.fill(0);
         fv.fill(0);
@@ -938,7 +1056,6 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
       alive = any;
       // sigue el próximo cuadro mientras haya mancha (sin movimiento nuevo se para)
       if (any) schedule();
-      for (let i = 0; i < field.length; i++) bytes[i] = Math.min(255, Math.round((field[i] / 1.4) * 255));
       if (!any) {
         if (drawn) {
           gl.clearColor(0, 0, 0, 0);
@@ -1180,7 +1297,8 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
       {/* "PORTA" / "FOLIO" como modelo 3D (vidrio burbuja tipo grafiti)
           DETRÁS de la silueta: reacciona al cursor y sale despedido al bajar
           hacia el androide. Desvinculado de isCutout para que se muestre en celulares. */}
-      <Letters3D
+      <SafeBoundary fallback={<LitePortfolioTitle opacity={lettersOpacity} />}>
+      {hasWebGL2() ? <Letters3D
         className="absolute inset-0 z-0"
         reactRef={frameOverrideRef}
         entry={typeof window !== 'undefined' && window.innerWidth < 768 ? 1 : entryProgress}
@@ -1188,7 +1306,8 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
         active={progress < lettersActiveUntil && ((typeof window !== 'undefined' && window.innerWidth < 768) || entryProgress > 0.2)}
         // se van apenas despegan: sin siluetas oscuras flotando durante el cambio
         style={{ opacity: lettersOpacity }}
-      />
+      /> : <LitePortfolioTitle opacity={lettersOpacity} />}
+      </SafeBoundary>
       <canvas
         ref={canvas2DRef}
         className="relative z-10 w-full h-full block"
@@ -1203,7 +1322,7 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
         }}
       />
       {/* Ventana de cristal del cursor: la figura se vuelve transparente (ver el efecto "VENTANA DE CRISTAL") */}
-      {isCutout && (
+      {isCutout && !window.matchMedia('(hover:none) and (pointer:coarse)').matches && (
         <canvas
           ref={revealCanvasRef}
           className="absolute inset-0 z-20 w-full h-full pointer-events-none"
@@ -1244,8 +1363,58 @@ const HeroAvatarStageInner: React.FC<HeroAvatarStageProps> = ({ progress, onRead
 // HeroSection se re-renderiza en cada cuadro del scroll: memo evita repetir
 // este render si el progreso no cambió. onReady se lee por ref (el padre la
 // pasa inline), así que su identidad no cuenta.
+const LitePortfolioTitle = ({ opacity }: { opacity: number }) => (
+  <div
+    className="absolute inset-x-0 top-[8%] z-10 text-center font-poster leading-none text-[#F230D2] pointer-events-none"
+    style={{ opacity, fontSize: 'clamp(2.7rem, 14vw, 8rem)', textShadow: '0 2px #0A1A2B, 0 0 12px #0A1A2B' }}
+  >
+    PORTAFOLIO
+  </div>
+);
+
+const LiteHeroAvatar: React.FC<HeroAvatarStageProps> = ({ progress, onReady }) => {
+  const host = useRef<HTMLDivElement>(null);
+  const image = useRef<HTMLImageElement>(null);
+  const ready = useRef(onReady);
+  ready.current = onReady;
+  useEffect(() => {
+    const node = host.current!;
+    const photo = image.current!;
+    const fit = () => {
+      const rect = heroFinalRect(node.clientWidth, node.clientHeight);
+      Object.assign(photo.style, { left: rect.x + 'px', top: rect.y + 'px', width: rect.w + 'px', height: rect.h + 'px' });
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  const opacity = Math.min(1, Math.max(0, 1 - (progress - HERO_DISSOLVE_START) / 0.09));
+  const loaded = () => {
+    reportLoad('lite-cover', 1, 1);
+    ready.current?.();
+  };
+  return (
+    <div ref={host} className="absolute inset-0 overflow-hidden" style={{ opacity }}>
+      <div className="absolute inset-0 bg-black" aria-hidden />
+      <LitePortfolioTitle opacity={Math.min(1, Math.max(0, (0.65 - progress) / 0.08))} />
+      <img
+        ref={image}
+        src="/hero-still/cover.webp"
+        fetchPriority="high"
+        alt=""
+        onLoad={loaded}
+        className="absolute max-w-none"
+      />
+    </div>
+  );
+};
+
+const HeroAvatarByMode: React.FC<HeroAvatarStageProps> = (props) =>
+  isLite() ? <LiteHeroAvatar {...props} /> : <HeroAvatarStageInner {...props} />;
+
 export const HeroAvatarStage = React.memo(
-  HeroAvatarStageInner,
+  HeroAvatarByMode,
   (a, b) =>
     a.progress === b.progress &&
     a.frameOverrideRef === b.frameOverrideRef &&

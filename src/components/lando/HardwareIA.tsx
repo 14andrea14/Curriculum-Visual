@@ -1,3 +1,5 @@
+import { refreshScroll } from '../../lib/refreshScroll';
+import { isLite } from '../../lib/deviceProfile';
 import React, { useEffect, useMemo, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -48,7 +50,7 @@ export const HardwareIA: React.FC = () => {
   usePauseOffscreen(secRef);
   // el paño grande (2560x1440) del barrido de píxeles y el dorso del cartucho, ya decodificados
   useEffect(() => {
-    const felt = optionalImage('/experience/felt.webp');
+    const felt = optionalImage(isLite() ? '/experience/felt-lite.webp' : '/experience/felt.webp');
     return registerImageWarmup('exp-img', ['/poker/card-back.webp', ...(felt ? [felt] : [])]);
   }, []);
 
@@ -134,7 +136,7 @@ export const HardwareIA: React.FC = () => {
         card.style.zoom = next;
         if (next !== prev) changed = true;
       });
-      if (changed) ScrollTrigger.refresh();
+      if (changed) refreshScroll();
     };
     fitCards();
     const onFitResize = () => {

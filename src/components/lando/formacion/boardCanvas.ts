@@ -84,7 +84,7 @@ function buildTexture(cw: number, ch: number, dpr: number) {
   return c;
 }
 
-export function buildBoard(cw: number, ch: number, dpr = 1): BoardField {
+export function buildBoard(cw: number, ch: number, dpr = 1, textured = true): BoardField {
   const sp = pinSpacing(cw);
   const cols = Math.floor(cw / sp);
   const rows = Math.floor(ch / sp);
@@ -121,7 +121,7 @@ export function buildBoard(cw: number, ch: number, dpr = 1): BoardField {
     lights.push(l);
   });
   for (let i = 0; i < extra; i++) lights.push(mk(NaN, NaN));
-  return { cw, ch, sp, lights, texture: buildTexture(cw, ch, dpr) };
+  return { cw, ch, sp, lights, texture: textured ? buildTexture(cw, ch, dpr) : null };
 }
 
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -154,12 +154,12 @@ export function drawBoard(ctx: CanvasRenderingContext2D, f: BoardField, p: numbe
   // charco de luz cálida crece un poco cuando aparece el tablero
   // la lámpara se enciende tras el relevo de la bombilla de la órbita
   const L = o.photo ? 0 : ss(0.3, 0.52, p);
-  const lr = Math.max(cw, ch) * (0.55 + 0.2 * B);
-  const lamp = ctx.createRadialGradient(cw / 2, o.bulbY, 0, cw / 2, o.bulbY, lr);
-  lamp.addColorStop(0, `rgba(255,206,150,${(0.11 + 0.05 * B) * L})`);
-  lamp.addColorStop(0.45, `rgba(255,190,140,${(0.04 + 0.03 * B) * L})`);
-  lamp.addColorStop(1, 'rgba(255,190,140,0)');
   if (L > 0) {
+    const lr = Math.max(cw, ch) * (0.55 + 0.2 * B);
+    const lamp = ctx.createRadialGradient(cw / 2, o.bulbY, 0, cw / 2, o.bulbY, lr);
+    lamp.addColorStop(0, `rgba(255,206,150,${(0.11 + 0.05 * B) * L})`);
+    lamp.addColorStop(0.45, `rgba(255,190,140,${(0.04 + 0.03 * B) * L})`);
+    lamp.addColorStop(1, 'rgba(255,190,140,0)');
     ctx.fillStyle = lamp;
     ctx.fillRect(0, 0, cw, ch);
   }

@@ -35,11 +35,18 @@
     <!-- Google Fonts: Sora (display/headers), Outfit (body), JetBrains Mono (tech labels).
          La hoja se pide SIN bloquear el render (media=print + onload): antes bloqueaba la
          ejecución del JS hasta que respondía Google. El Preloader espera a que las fuentes
-         estén listas (lib/preload.ts: loadFonts). Con display=swap no hay texto invisible. -->
+         estén listas (lib/preload.ts: loadFonts). Con display=swap no hay texto invisible.
+         PESOS: se evaluó recortar los que no se usan (Unbounded solo 300, Playfair solo cursiva 600,
+         Caveat solo 700: -70 kB) y se DESCARTÓ: al quedar un solo peso Google sirve una instancia
+         estática en vez del archivo variable y los glifos cambian (Caveat 0.2 % más angosta, bordes
+         distintos en Unbounded/Playfair). Los pesos extra no cuestan bytes: todos comparten un archivo.
+         Mona Sans necesita wdth 75..125 (la página usa wdth 80/82/88/100/112).
+         NO se hace preload de los woff2: las URLs de gstatic llevan versión (v27/…) y cambian.
+         Inter solo es respaldo en las pilas de Mona Sans y nunca se pinta: loadFonts ya no la pide. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link data-fonts-css rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Sora:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600;1,700&family=Inter:wght@300;400;500&family=Press+Start+2P&family=Anton&family=Caveat:wght@500;700&family=Fredoka:wght@600;700&family=Unbounded:wght@200;300&family=Bagel+Fat+One&family=Gloock&family=Mona+Sans:wdth,wght@75..125,400..900&display=swap">
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Sora:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600;1,700&family=Inter:wght@300;400;500&family=Press+Start+2P&family=Anton&family=Caveat:wght@500;700&family=Fredoka:wght@600;700&family=Unbounded:wght@200;300&family=Bagel+Fat+One&family=Gloock&family=Mona+Sans:wdth,wght@75..125,400..900&display=swap"></noscript>
+    <link data-fonts-css rel="stylesheet" media="print" onload="this.media='all'" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Sora:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600;1,700&family=Inter:wght@300;400;500&family=Press+Start+2P&family=Anton&family=Caveat:wght@500;700&family=Fredoka:wght@600;700&family=Unbounded:wght@200;300&family=Bagel+Fat+One&family=Gloock&family=Mona+Sans:wdth,wght@75..125,400..900&family=Sedgwick+Ave+Display&display=swap">
+    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Sora:wght@400;600;700;800&family=Outfit:wght@300;400;500;600;700&family=Playfair+Display:ital,wght@1,500;1,600;1,700&family=Inter:wght@300;400;500&family=Press+Start+2P&family=Anton&family=Caveat:wght@500;700&family=Fredoka:wght@600;700&family=Unbounded:wght@200;300&family=Bagel+Fat+One&family=Gloock&family=Mona+Sans:wdth,wght@75..125,400..900&family=Sedgwick+Ave+Display&display=swap"></noscript>
   </head>
   <body class="bg-cyber-dark text-cyber-textBright font-outfit antialiased selection:bg-cyber-magenta selection:text-white overflow-x-hidden">
     <div id="root"></div>

@@ -1,6 +1,8 @@
+import { usePauseOffscreen } from '../lando/usePauseOffscreen';
 import React, { useEffect, useState, useRef } from 'react';
 import { PORTFOLIO_DATA } from '../../data/portfolioData';
 import { SOCIAL_PATHS } from '../lando/SocialDock';
+import { isLite, listenMedia } from '../../lib/deviceProfile';
 import { AIFloaters, type AIFocus } from '../canvas/AIFloaters';
 import { SocialIconButton } from '../ui/SocialIconButton';
 import { HeroAvatarStage, HeroBackdrop, HERO_DISSOLVE_START, heroFinalRect } from '../canvas/HeroAvatarStage';
@@ -433,6 +435,8 @@ const ScrambleLine: React.FC<{ text: string; progress: number; className?: strin
 
 export const HeroSection: React.FC = () => {
   const { profile } = PORTFOLIO_DATA;
+  const grainRef = useRef<HTMLDivElement>(null);
+  usePauseOffscreen(grainRef);
   const containerRef = useRef<HTMLDivElement>(null!);
   const [scrollProgress, setScrollProgress] = useState(0);
   const [iconsInteractive, setIconsInteractive] = useState(false);
@@ -1144,10 +1148,9 @@ export const HeroSection: React.FC = () => {
       const st = stRef.current;
       return st ? st.start + (st.end - st.start) * heroToRawProgress(AUTOPLAY_TARGET_PROGRESS) : 0;
     };
-    // Con la portada bloqueada se conserva la barra de scroll (ver .hero-cover-lock en
-    // index.css): si no, al soltarla el ancho de la página cambia y todos los
-    // ResizeObserver (incluido un ScrollTrigger.refresh() del pie) congelaban la portada
-    // ~0.5-0.8 s justo al terminar el guiño. Se pone ANTES de lockScroll().
+    // La barra de scroll de escritorio ya no se quita con Lenis detenido (regla general
+    // `html.lenis.lenis-stopped` en index.css), así que esta clase no tiene reglas CSS: queda
+    // solo como marca inofensiva del bloqueo de la portada. Se pone ANTES de lockScroll().
     const setCoverLockClass = (on: boolean) => document.documentElement.classList.toggle('hero-cover-lock', on);
     const unlockCover = () => {
       if (!lockedRef.current) return;
@@ -1186,6 +1189,11 @@ export const HeroSection: React.FC = () => {
     // libera el scroll.
     playSmileRef.current = (thenContinue = false) => {
       if (smilePlayingRef.current || !atCover()) return;
+      if (isLite()) {
+        unlockCover();
+        if (thenContinue && bridgeStateRef.current === 'idle') triggerBridge(HERO_PHASE_END, bridgeStateRef);
+        return;
+      }
       smilePlayingRef.current = true;
       // UN SOLO movimiento continuo, sin pausas: la figura va de la pose a la
       // sonrisa y vuelve a la pose en una sola pasada (sin sostener el punto de
@@ -1896,7 +1904,7 @@ export const HeroSection: React.FC = () => {
   // magnéticos) solo tiene sentido en el tramo "asentado": después de que el
   // texto ya se reveló y antes de que arranque la salida (ahí el sujeto ya
   // no está nítido en pantalla). Pedido explícito de la usuaria.
-  const mouseFxActive = heroProgress > NAME_IN_AT && heroProgress < HERO_DISSOLVE_START;
+  const mouseFxActive = !isLite() && heroProgress > NAME_IN_AT && heroProgress < HERO_DISSOLVE_START;
 
   // Crossfade continuo rosa (Hero) -> morado (HOLD) de las partículas de
   // fondo, atado al scroll — pedido explícito ("que las rosadas se
@@ -1998,6 +2006,13 @@ export const HeroSection: React.FC = () => {
     let mx = window.innerWidth / 2, my = window.innerHeight / 2, hasMouse = false;
     let cx = 0, cy = 0, crx = 0, cry = 0, cs = 1;
     let raf = 0;
+    // Rect del texto en caché: antes era un getBoundingClientRect por cuadro (con el DOM
+    // recién tocado por el transform del cuadro anterior: estilo + layout forzados). Se
+    // mide de nuevo tras scroll/resize o si tiene más de 150 ms (cubre cambios de layout
+    // sin scroll); se guarda ya sin el desplazamiento propio (cx, cy) que se aplicaba.
+    let rc: { x: number; y: number; w: number; el: HTMLElement | null; at: number } = { x: 0, y: 0, w: 0, el: null, at: -1e9 };
+    let rcDirty = true;
+    const dirtyRect = () => { rcDirty = true; };
     const tick = () => {
       raf = 0;
       const el = tagMouseRef.current;
@@ -2010,11 +2025,15 @@ export const HeroSection: React.FC = () => {
       let tx = nx * 10, ty = ny * 6;
       const rx = -ny * 4, ry = nx * 4;
       // magnetismo: si el cursor está cerca, las letras se acercan un poco
-      const r = el.getBoundingClientRect();
-      const ex = r.left + r.width / 2 - cx, ey = r.top + r.height / 2 - cy;
-      const dx = mx - ex, dy = my - ey;
+      const nowMs = performance.now();
+      if (rcDirty || rc.el !== el || nowMs - rc.at > 150) {
+        const r = el.getBoundingClientRect();
+        rc = { x: r.left + r.width / 2 - cx, y: r.top + r.height / 2 - cy, w: r.width, el, at: nowMs };
+        rcDirty = false;
+      }
+      const dx = mx - rc.x, dy = my - rc.y;
       const d = Math.hypot(dx, dy);
-      const R = Math.max(220, r.width * 0.75);
+      const R = Math.max(220, rc.w * 0.75);
       const pull = d < R ? 1 - d / R : 0;
       const p = pull * pull * (3 - 2 * pull);
       tx += (dx / (d || 1)) * 12 * p;
@@ -2034,10 +2053,14 @@ export const HeroSection: React.FC = () => {
     tagKickRef.current = kick;
     window.addEventListener('mousemove', onMove, { passive: true });
     document.addEventListener('mouseleave', onLeave);
+    window.addEventListener('scroll', dirtyRect, { passive: true, capture: true });
+    window.addEventListener('resize', dirtyRect, { passive: true });
     return () => {
       tagKickRef.current = null;
       window.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseleave', onLeave);
+      window.removeEventListener('scroll', dirtyRect, { capture: true });
+      window.removeEventListener('resize', dirtyRect);
       if (raf) cancelAnimationFrame(raf);
     };
   }, []);
@@ -2056,8 +2079,7 @@ export const HeroSection: React.FC = () => {
     if (!window.matchMedia) return;
     const mq = window.matchMedia('(min-width: 1024px)');
     const on = () => setAiFloatersOn(mq.matches);
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
+    return listenMedia(mq, on);
   }, []);
   const [eduCardH, setEduCardH] = useState(480);
   useEffect(() => {
@@ -2173,7 +2195,16 @@ export const HeroSection: React.FC = () => {
           <CatManifestoStage
             enter={manifestoEnter}
             walk={catProgress}
-            cat={<ScrollFrameStage progress={catProgress} framesPath={CAT_CUT_FRAMES_PATH} rectAt={catRectAt} transparent />}
+            cat={
+              <ScrollFrameStage
+                liteActive={androidProgress > 0.84 || catProgress > 0}
+                liteFallbackFrame={40}
+                progress={catProgress}
+                framesPath={CAT_CUT_FRAMES_PATH}
+                rectAt={catRectAt}
+                transparent
+              />
+            }
           />
         </div>
 
@@ -2181,8 +2212,9 @@ export const HeroSection: React.FC = () => {
             luciérnaga. Arranca en el mismo último cuadro que deja HeroAvatarStage.
             androidLayerOpacity lo apaga cuando arranca la caminata del gato. */}
         <div className="absolute inset-0 z-0" style={{ opacity: androidLayerOpacity }}>
-          <div className="absolute inset-0" style={{ opacity: androidCutReady ? 1 : 0 }}>
+          <div className="absolute inset-0" style={{ opacity: isLite() || androidCutReady ? 1 : 0 }}>
             <ScrollFrameStage
+              liteActive={heroProgress >= AUTOPLAY_TARGET_PROGRESS - 0.02 && catProgress <= 0.04}
               progress={androidProgress}
               framesPath={ANDROID_CUT_FRAMES_PATH}
               rectAt={androidRectAt}
@@ -2232,7 +2264,7 @@ export const HeroSection: React.FC = () => {
 
         {/* grano de película: unifica la textura de la imagen nítida y del video */}
         <div aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="hero-grain" />
+          {!isLite() && <div ref={grainRef} className="hero-grain" />}
         </div>
 
         {/* En móvil: bloque negro con desvanecido inferior para la vista del avatar/portada (disimula el corte y destaca texto y redes) */}
@@ -2287,7 +2319,7 @@ export const HeroSection: React.FC = () => {
               className="absolute z-[19] left-4 sm:left-12 lg:left-16 bottom-5 sm:bottom-9 max-sm:bottom-[calc(1.25rem+env(safe-area-inset-bottom,0px))] max-sm:max-w-[160px] pointer-events-none"
               style={{ transformOrigin: '30% 60%', willChange: 'transform', opacity: cardFlow > 0.088 ? 0 : 1 }}
             >
-              {melting && (
+              {melting && !isLite() && (
                 <svg width="0" height="0" className="absolute" aria-hidden>
                   <defs>
                     <filter id="tagMelt" x="-40%" y="-120%" width="180%" height="340%">
@@ -2301,7 +2333,7 @@ export const HeroSection: React.FC = () => {
                   pantalla (no un rectángulo aplastado) */}
               <div
                 style={{
-                  filter: melting
+                  filter: melting && !isLite()
                     ? `url(#tagMelt) drop-shadow(0 0 ${lerp(0, 16, m) + 6 * core}px rgba(242,48,210,0.55))`
                     : undefined,
                   // RENDIMIENTO: con el filtro "compuesto" (capa propia) la GPU aplica el
@@ -2395,7 +2427,7 @@ export const HeroSection: React.FC = () => {
                 — pedido explícito de que no se solapen con la cara del
                 androide, respetando el espacio libre a la izquierda. */}
             {/* Logos 3D: retirados en MÓVIL por pedido explícito; en escritorio se mantienen */}
-            {aiFloatersOn && (
+            {aiFloatersOn && !isLite() && (
               <AIFloaters
                 active={cardFlow > 0.6}
                 focusRef={aiFocusRef}
@@ -2617,7 +2649,7 @@ export const HeroSection: React.FC = () => {
                         width={mBox.w}
                         height={mBox.h}
                         viewBox={`${mBox.x} ${mBox.y} ${mBox.w} ${mBox.h}`}
-                        style={{ left: mBox.x, top: mBox.y, filter: 'url(#eduGoo)', willChange: 'filter', opacity: 1 - clamp01(pTravel / 0.35) }}
+                        style={{ left: mBox.x, top: mBox.y, filter: isLite() ? undefined : 'url(#eduGoo)', willChange: 'filter', opacity: 1 - clamp01(pTravel / 0.35) }}
                       >
                         {mergeCircles.map((cc, i) => (
                           <circle key={i} cx={cc.x} cy={cc.y} r={cc.r} fill="url(#eduNeon)" />
@@ -2751,7 +2783,7 @@ export const HeroSection: React.FC = () => {
                               'radial-gradient(60% 45% at 50% 40%, rgba(255,140,230,0.55) 0%, rgba(255,140,230,0) 70%), radial-gradient(80% 60% at 20% 80%, rgba(80,210,255,0.35) 0%, rgba(80,210,255,0) 70%), linear-gradient(170deg, #2a145a 0%, #5a1f7d 35%, #b03b9b 62%, #ffb37a 88%, #ffe1a8 100%)',
                           }}
                         >
-                          <img
+                          <img decoding="async"
                             src="/cards/unexpo-art.webp"
                             alt=""
                             className="absolute inset-0 w-full h-full object-cover"
@@ -2775,7 +2807,7 @@ export const HeroSection: React.FC = () => {
                           </svg>
                         </div>
                         {/* el logo (figura), con más profundidad que el fondo */}
-                        <img
+                        <img decoding="async"
                           src="/logos/unexpo.webp"
                           alt="UNEXPO"
                           className="absolute left-1/2 top-[38%] sm:top-[44%] w-[68%] sm:w-[86%] h-auto max-w-none"
@@ -2946,7 +2978,7 @@ export const HeroSection: React.FC = () => {
                     height={gBox.h}
                     viewBox={`${gBox.x} ${gBox.y} ${gBox.w} ${gBox.h}`}
                     fill="url(#leftNeon)"
-                    style={{ left: gBox.x, top: gBox.y, filter: 'url(#leftGoo) drop-shadow(0 0 18px rgba(242,48,210,0.55))', willChange: 'filter' }}
+                    style={{ left: gBox.x, top: gBox.y, filter: isLite() ? undefined : 'url(#leftGoo) drop-shadow(0 0 18px rgba(242,48,210,0.55))', willChange: 'filter' }}
                   >
                     {blobs.map((e, i) =>
                       i < blobs.length - 1 ? <circle key={i} cx={e.x} cy={e.y} r={e.rx} /> : <ellipse key="b" cx={e.x} cy={e.y} rx={e.rx} ry={e.ry} />

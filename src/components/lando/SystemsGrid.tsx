@@ -1,3 +1,4 @@
+import { listenMedia } from '../../lib/deviceProfile';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -61,8 +62,7 @@ function useMedia(query: string) {
     const mq = window.matchMedia(query);
     const on = () => setM(mq.matches);
     on();
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
+    return listenMedia(mq, on);
   }, [query]);
   return m;
 }
@@ -150,6 +150,8 @@ export const SystemsGrid: React.FC = () => {
   useEffect(() => {
     const el = stage.current;
     const J = journey.current;
+    // ancho / alto del escenario (los actualiza un ResizeObserver; 0 = sin medir todavía)
+    const dims = { w: 0, h: 0 };
     const apply = () => {
       const t = title.current;
       if (t) {
@@ -180,8 +182,14 @@ export const SystemsGrid: React.FC = () => {
         // punto de luz: del núcleo de la órbita a la bombilla de la foto (50 % / 10vh)
         const pt = point.current;
         if (pt && el) {
-          const W = el.clientWidth;
-          const f = orbitFrame(W, el.clientHeight);
+          // medidas del escenario cacheadas (ResizeObserver más abajo): leer clientWidth aquí,
+          // después de escribir estilos, forzaba un layout en cada cuadro del pin
+          if (!dims.w) {
+            dims.w = el.clientWidth;
+            dims.h = el.clientHeight;
+          }
+          const W = dims.w;
+          const f = orbitFrame(W, dims.h);
           const bx = W / 2;
           const by = BULB_VH * window.innerHeight;
           const m = J.pointMove;
@@ -197,7 +205,9 @@ export const SystemsGrid: React.FC = () => {
       if (spd.current) {
         // "velocidad" de lectura: sube con el salto
         const c = J.warp * J.warp * 9.8 + J.flash * 2;
-        spd.current.textContent = `${c.toFixed(2)} c`;
+        // reemplazar el texto (aunque sea el mismo) invalida el layout: solo si cambió
+        const txt = `${c.toFixed(2)} c`;
+        if (spd.current.textContent !== txt) spd.current.textContent = txt;
       }
     };
     if (!el || reduced) {
@@ -215,6 +225,15 @@ export const SystemsGrid: React.FC = () => {
     // para que ScrollTrigger mida el solapamiento con el espaciador ya colocado.
     if (blendWarp && warpPin !== ScrollTrigger.getById(WARP_OUT_PIN)) return;
     if (blendWarp && !warpPin) return;
+    // medidas del escenario fuera del camino caliente (el callback corre con el layout ya hecho)
+    const roDims =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            dims.w = el.clientWidth;
+            dims.h = el.clientHeight;
+          })
+        : null;
+    roDims?.observe(el);
     const fn = mobile ? journeyMobile : (e: number, q: number, J: Journey) => journeyDesktop(e, q, J, hand);
     const pinVh = mobile ? PIN_VH_MOBILE : PIN_VH_DESKTOP;
     let e = 0;
@@ -351,6 +370,7 @@ export const SystemsGrid: React.FC = () => {
 
     update();
     return () => {
+      roDims?.disconnect();
       unregister();
       handoff?.kill();
       pin?.kill();
@@ -434,7 +454,7 @@ export const SystemsGrid: React.FC = () => {
             <div ref={photoWrap} aria-hidden className="absolute inset-0 overflow-hidden pointer-events-none" style={{ opacity: 0 }}>
               {photo && (
                 <img
-                  src={BOARD_IMG}
+                  decoding="async" src={BOARD_IMG}
                   alt=""
                   aria-hidden
                   className="pointer-events-none select-none"

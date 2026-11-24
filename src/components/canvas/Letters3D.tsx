@@ -351,6 +351,10 @@ const Letter: React.FC<{
   const frontRef = useRef<THREE.Mesh>(null);
 
   const D = Math.max(0.5, W * 0.5); // grosor del cuerpo (unidades de mundo)
+  // UNA geometría por letra para sus 10 planos (antes eran 10 idénticas): three reutiliza
+  // el estado de atributos entre dibujos consecutivos y hay menos buffers en la GPU
+  const geo = useMemo(() => new THREE.PlaneGeometry(W, H), [W, H]);
+  useEffect(() => () => geo.dispose(), [geo]);
 
   const mats = useMemo(() => {
     if (!t) return null;
@@ -444,16 +448,10 @@ const Letter: React.FC<{
   return (
     <group ref={groupRef}>
       {mats.slices.map((m, k) => (
-        <mesh key={k} position={[0, 0, -0.03 - (k / (SLICES - 1)) * D]} material={m} renderOrder={0}>
-          <planeGeometry args={[W, H]} />
-        </mesh>
+        <mesh key={k} position={[0, 0, -0.03 - (k / (SLICES - 1)) * D]} geometry={geo} material={m} renderOrder={0} />
       ))}
-      <mesh ref={frontRef} material={mats.front} renderOrder={1}>
-        <planeGeometry args={[W, H]} />
-      </mesh>
-      <mesh position={[0, 0, 0.02]} material={mats.spec} renderOrder={2}>
-        <planeGeometry args={[W, H]} />
-      </mesh>
+      <mesh ref={frontRef} geometry={geo} material={mats.front} renderOrder={1} />
+      <mesh position={[0, 0, 0.02]} geometry={geo} material={mats.spec} renderOrder={2} />
     </group>
   );
 };
@@ -479,6 +477,7 @@ const Scene: React.FC<{
   const meshes = useRef<(THREE.Mesh | null)[]>(Array.from({ length: COUNT }, () => null));
   const texes = useRef<(Tex | null)[]>(Array.from({ length: COUNT }, () => null));
   const hoverRef = useRef<number[]>(Array.from({ length: COUNT }, () => 0));
+  const hoveredScratch = useRef<boolean[]>(Array.from({ length: COUNT }, () => false));
   const physRef = useRef<Phys[]>(Array.from({ length: COUNT }, newPhys));
   const cursorRef = useRef({ x: 0, y: 0, vx: 0, vy: 0, init: false });
   const pulseRef = useRef(0);
@@ -602,7 +601,9 @@ const Scene: React.FC<{
     // hover por forma: se prueba el alfa de la imagen bajo el cursor; solo
     // cuenta la letra más cercana a la cámara que esté realmente "sólida" ahí
     raycaster.setFromCamera(ndc, camera);
-    const hovered = Array.from({ length: COUNT }, () => false);
+    // (arreglo reutilizado: antes se creaban dos arreglos nuevos por cuadro)
+    const hovered = hoveredScratch.current;
+    hovered.fill(false);
     let bestDist = Infinity;
     let bestIdx = -1;
     meshes.current.forEach((m, i) => {
@@ -618,7 +619,8 @@ const Scene: React.FC<{
       }
     });
     if (bestIdx >= 0) hovered[bestIdx] = true;
-    hoverRef.current = hoverRef.current.map((v, i) => THREE.MathUtils.damp(v, hovered[i] ? 1 : 0, 8, dt));
+    const hv = hoverRef.current;
+    for (let i = 0; i < COUNT; i++) hv[i] = THREE.MathUtils.damp(hv[i], hovered[i] ? 1 : 0, 8, dt);
   });
 
   return (

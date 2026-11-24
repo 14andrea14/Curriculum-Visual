@@ -1,3 +1,4 @@
+import { refreshScroll } from '../lib/refreshScroll';
 import { useEffect } from 'react';
 import Lenis from 'lenis';
 import gsap from 'gsap';
@@ -96,7 +97,7 @@ export const useSmoothScroll = () => {
     // Hero, "end: +=110%"), el pin se desincroniza justo en el límite de
     // la sección — se manifiesta como un frame de glitch/salto visual ahí.
     // Refrescar cuando las fuentes terminan de cargar corrige las medidas.
-    document.fonts?.ready?.then(() => ScrollTrigger.refresh());
+    document.fonts?.ready?.then(() => refreshScroll());
 
     return () => {
       window.removeEventListener('touchstart', ensureUnlocked);

@@ -1,3 +1,4 @@
+import { isLite } from '../../lib/deviceProfile';
 import { isPreloading, registerWarmup } from '../../lib/preload';
 import { FIBERS, GRAIN, WEAR, WEAVE } from './poker/pokerTheme';
 
@@ -17,7 +18,7 @@ export const warmKeep = (src: string) =>
   new Promise<void>((res) => {
     const im = new Image();
     im.decoding = 'async';
-    keep.push(im);
+    if (!isLite()) keep.push(im);
     im.onload = () => (im.decode ? im.decode().then(() => res(), () => res()) : res());
     im.onerror = () => res();
     im.src = src;
@@ -25,7 +26,7 @@ export const warmKeep = (src: string) =>
 
 /** Registra el calentamiento de un grupo de imágenes (devuelve la función que lo cancela). */
 export const registerImageWarmup = (key: string, srcs: string[], weight = 1) =>
-  registerWarmup(key, () => Promise.all(srcs.map(warmKeep)), weight);
+  isLite() ? () => {} : registerWarmup(key, () => Promise.all(srcs.map(warmKeep)), weight);
 
 const SAMPLE = 'position:absolute;width:44px;height:44px;opacity:0.012;overflow:hidden;';
 const svgUrl = (s: string) => `url("data:image/svg+xml;utf8,${encodeURIComponent(s)}")`;
@@ -56,7 +57,7 @@ const samples = (): string[] => {
 let paintWarmed = false;
 /** Pinta una vez una muestra de cada efecto pesado (solo mientras la carga cubre la página). */
 export const registerPaintWarmup = () =>
-  registerWarmup(
+  isLite() ? () => {} : registerWarmup(
     'lando-paint-effects',
     () =>
       new Promise<void>((res) => {

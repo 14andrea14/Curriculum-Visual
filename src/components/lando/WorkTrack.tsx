@@ -1,3 +1,5 @@
+import { refreshScroll } from '../../lib/refreshScroll';
+import { isLite, listenMedia } from '../../lib/deviceProfile';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -46,7 +48,7 @@ const ACE = 4; // la carta que se levanta al final (el As: el proyecto premiado)
 const EXIT_BG =
   'linear-gradient(180deg, rgba(0,0,0,.6), rgba(0,0,0,0) 40%), radial-gradient(ellipse 62.5% 62.5% at 50% 45%, rgb(9,34,25), rgb(4,15,11))';
 // El relevo usa la misma foto a pantalla completa que la carta sola.
-const FELT_PHOTO = optionalImage('/experience/felt.webp');
+const FELT_PHOTO = optionalImage(isLite() ? '/experience/felt-lite.webp' : '/experience/felt.webp');
 const EXIT_BG_FINAL = FELT_PHOTO
   ? `url(${FELT_PHOTO}) center / cover no-repeat`
   : EXIT_BG;
@@ -107,12 +109,12 @@ export const WorkTrack: React.FC = () => {
       setMode(readMode());
       setWide(window.matchMedia(Q_WIDE).matches);
     };
-    mqs.forEach((m) => m.addEventListener('change', on));
+    const offMedia = mqs.map((m) => listenMedia(m, on));
     // el layout se recalcula antes del refresh de ScrollTrigger (que espera ~200 ms)
     const onResize = () => setLay(computeLayout(window.innerWidth, window.innerHeight));
     window.addEventListener('resize', onResize);
     return () => {
-      mqs.forEach((m) => m.removeEventListener('change', on));
+      offMedia.forEach((off) => off());
       window.removeEventListener('resize', onResize);
     };
   }, []);
@@ -145,6 +147,16 @@ export const WorkTrack: React.FC = () => {
     let cancelled = false;
     let timer = 0;
 
+    const lite = isLite();
+    const flipCard = (timeline: gsap.core.Timeline, card: Element | null, faceUp: boolean, at: number, duration: number) => {
+      if (lite) {
+        const front = card?.querySelector('.pk-front');
+        if (front) timeline.to(front, { autoAlpha: faceUp ? 1 : 0, duration, ease: 'power2.inOut' }, at);
+      } else {
+        timeline.to(card, { rotationY: faceUp ? 180 : 360, duration, ease: 'power2.inOut' }, at);
+      }
+    };
+
     const buildPin = () => {
       const q = gsap.utils.selector(sec);
       const deals = q('.pk-deal');
@@ -166,11 +178,11 @@ export const WorkTrack: React.FC = () => {
       const U = () => Math.min(vh() * 0.43, vw() * 0.78);
 
       gsap.set(deckMove, { scale: DECK_SCALE });
-      gsap.set(flips, { rotationY: 0, transformPerspective: 1500 });
+      if (!lite) gsap.set(flips, { rotationY: 0, transformPerspective: 1500 });
       gsap.set(sweeps, { rotation: 14, xPercent: 0 });
       // cada carta que cae tiene SU propia perspectiva (no comparten espacio 3D:
       // nunca se cortan entre sí; se apilan por orden)
-      gsap.set(falls, { transformPerspective: 700 });
+      if (!lite) gsap.set(falls, { transformPerspective: 700 });
       const half = DECK / 2;
       const bottomHalf = riffles.slice(0, half);
       const topHalf = riffles.slice(half);
@@ -184,14 +196,21 @@ export const WorkTrack: React.FC = () => {
       const veil = q('.pk-veil')[0];
       const setStageY = gsap.quickSetter(stage, 'y', 'px');
       gsap.set(stage, { y: 0 });
+      let pinStart: number | undefined;
+      let stageY = 0;
       const syncIntro = () => {
-        const top = sec.getBoundingClientRect().top;
+        // Antes del pin, su inicio corresponde al borde superior de la sección.
+        const top = pinStart === undefined ? sec.getBoundingClientRect().top : pinStart - window.scrollY;
         const travel = vh() * (1 + POKER_ENTRY_HOLD);
         const p = Math.min(1, Math.max(0, 1 - top / travel));
         if (p !== intro.progress()) intro.progress(p);
-        setStageY(p > 0 && p < 1 ? -top : 0);
+        const nextY = p > 0 && p < 1 ? -top : 0;
+        if (nextY !== stageY) {
+          setStageY(nextY);
+          stageY = nextY;
+        }
       };
-      // se actualiza con CUALQUIER scroll de la página (rango completo), solo lee un rect
+      // Se actualiza con cualquier scroll de la página, sin medir layout por cuadro.
       ScrollTrigger.create({
         start: 0,
         end: 'max',
@@ -227,11 +246,11 @@ export const WorkTrack: React.FC = () => {
         intro.fromTo(f, { rotation: d.rz }, { rotation: 0, duration: dur, ease: 'power3.out' }, t);
         intro.fromTo(
           f,
-          { rotationX: d.rx, rotationY: d.ry },
+          { rotationX: lite ? 0 : d.rx, rotationY: lite ? 0 : d.ry },
           {
             keyframes: [
-              { rotationX: -d.rx * 0.55, rotationY: -d.ry * 0.5, duration: dur * 0.45, ease: 'sine.inOut' },
-              { rotationX: d.rx * 0.18, rotationY: d.ry * 0.15, duration: dur * 0.3, ease: 'sine.inOut' },
+              { rotationX: lite ? 0 : -d.rx * 0.55, rotationY: lite ? 0 : -d.ry * 0.5, duration: dur * 0.45, ease: 'sine.inOut' },
+              { rotationX: lite ? 0 : d.rx * 0.18, rotationY: lite ? 0 : d.ry * 0.15, duration: dur * 0.3, ease: 'sine.inOut' },
               { rotationX: 0, rotationY: 0, duration: dur * 0.25, ease: 'power2.out' },
             ],
           },
@@ -284,7 +303,7 @@ export const WorkTrack: React.FC = () => {
         const t = T_F + i * 0.72;
         tl.set(slots[i], { zIndex: 5 }, t);
         tl.to(deals[i], { y: REST_Y[i] - 18, scale: 1.06, rotation: 0, duration: 0.24, ease: 'power2.out' }, t);
-        tl.to(f, { rotationY: 180, duration: 0.5, ease: 'power2.inOut' }, t + 0.06);
+        flipCard(tl, f, true, t + 0.06, 0.5);
         tl.fromTo(sweeps[i], { xPercent: 0 }, { xPercent: 420, duration: 0.42, ease: 'power1.inOut' }, t + 0.36);
         tl.to(deals[i], { y: REST_Y[i], scale: 1, rotation: REST_ROT[i], duration: 0.3, ease: 'power2.inOut' }, t + 0.46);
         tl.set(slots[i], { zIndex: 1 }, t + 0.8);
@@ -314,7 +333,7 @@ export const WorkTrack: React.FC = () => {
         T_X + 0.15,
       );
       // se da vuelta: queda boca abajo, como la primera carta de la sección siguiente
-      tl.to(flips[ACE], { rotationY: 360, duration: 0.6, ease: 'power2.inOut' }, T_X + 0.75);
+      flipCard(tl, flips[ACE], false, T_X + 0.75, 0.6);
       tl.to({}, { duration: 0.35 });
 
       const TOTAL = tl.duration();
@@ -326,6 +345,10 @@ export const WorkTrack: React.FC = () => {
         scrub: true,
         animation: tl,
         invalidateOnRefresh: true,
+        onRefresh: (self) => {
+          pinStart = self.start;
+          syncIntro();
+        },
         anticipatePin: 1,
         // invitación a hacer clic solo mientras la mano está boca arriba y quieta
         onUpdate: (self) => {
@@ -333,6 +356,9 @@ export const WorkTrack: React.FC = () => {
           sec.classList.toggle('pk-ready', t >= T_END && t < T_X);
         },
       });
+
+      pinStart = pinST.start;
+      syncIntro();
 
       // paradas del scroll asistido: instantes (en unidades de la timeline) donde la escena
       // queda quieta y legible. El avance de cada tramo se mide en pantallas (t / 2.65).
@@ -376,7 +402,7 @@ export const WorkTrack: React.FC = () => {
       );
 
       ScrollTrigger.sort();
-      ScrollTrigger.refresh();
+      refreshScroll();
     };
 
     const buildStack = () => {
@@ -385,14 +411,13 @@ export const WorkTrack: React.FC = () => {
       q('.pk-slot').forEach((slot) => {
         const flip = slot.querySelector('.pk-flip');
         const sweep = slot.querySelector('.pk-sweep');
-        gsap.set(flip, { rotationY: 0, transformPerspective: 1300 });
+        if (!lite) gsap.set(flip, { rotationY: 0, transformPerspective: 1300 });
         gsap.set(sweep, { rotation: 14 });
-        gsap
-          .timeline({ scrollTrigger: { trigger: slot, start: 'top 78%', end: 'top 30%', scrub: true } })
-          .to(flip, { rotationY: 180, duration: 1, ease: 'power2.inOut' })
-          .fromTo(sweep, { xPercent: 0 }, { xPercent: 420, duration: 0.6 }, 0.6);
+        const timeline = gsap.timeline({ scrollTrigger: { trigger: slot, start: 'top 78%', end: 'top 30%', scrub: true } });
+        flipCard(timeline, flip, true, 0, 1);
+        timeline.fromTo(sweep, { xPercent: 0 }, { xPercent: 420, duration: 0.6 }, 0.6);
       });
-      ScrollTrigger.refresh();
+      refreshScroll();
     };
 
     const create = () => {

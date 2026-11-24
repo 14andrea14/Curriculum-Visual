@@ -1,3 +1,5 @@
+import { isLite, hasWebGL2 } from '../../../lib/deviceProfile';
+import { SafeBoundary } from '../../ui/SafeBoundary';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
@@ -627,7 +629,7 @@ export const SpaceBackdrop: React.FC<Omit<Props, 'stageH'> & { extendVh?: number
   const [live, setLive] = useState(false);
   useEffect(() => {
     const el = wrap.current;
-    if (!el) return;
+    if (!el || isLite()) return;
     const io = new IntersectionObserver(([e]) => setLive(e.isIntersecting), { rootMargin: '200px 0px' });
     io.observe(el);
     // alto del escenario (el padre) sin leer el layout en cada cuadro
@@ -650,6 +652,7 @@ export const SpaceBackdrop: React.FC<Omit<Props, 'stageH'> & { extendVh?: number
     : (extendVh > 0
         ? `linear-gradient(to bottom, #000 calc(100% - ${extendVh}vh), transparent 100%)`
         : undefined);
+  const stars = <div className="absolute inset-0 space-css-stars" />;
   return (
     <div
       ref={wrap}
@@ -657,7 +660,8 @@ export const SpaceBackdrop: React.FC<Omit<Props, 'stageH'> & { extendVh?: number
       style={{ height: `calc(100% + ${extendVh}vh)`, WebkitMaskImage: fade, maskImage: fade }}
       aria-hidden
     >
-      <Canvas
+      <SafeBoundary fallback={stars}>
+      {isLite() || !hasWebGL2() ? stars : <Canvas
         className="!absolute inset-0"
         style={{ pointerEvents: 'none' }}
         resize={{ offsetSize: true, scroll: false }}
@@ -668,7 +672,8 @@ export const SpaceBackdrop: React.FC<Omit<Props, 'stageH'> & { extendVh?: number
       >
         <StarSpace {...props} stageH={stageH} />
         <WarmUp delay={1500} />
-      </Canvas>
+      </Canvas>}
+      </SafeBoundary>
     </div>
   );
 };

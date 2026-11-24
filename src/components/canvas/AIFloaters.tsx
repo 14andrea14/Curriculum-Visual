@@ -1,3 +1,5 @@
+import { isLite, hasWebGL2 } from '../../lib/deviceProfile';
+import { SafeBoundary } from '../ui/SafeBoundary';
 import React, { useMemo, useRef } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Environment, Lightformer } from '@react-three/drei';
@@ -485,11 +487,13 @@ const AIFloatersImpl: React.FC<FloatersProps> = ({ active, focusRef, className =
   }, [active]);
   return (
     <div className={`pointer-events-none ${className}`} style={style}>
-      <Canvas frameloop={live ? 'always' : 'never'} dpr={[1, 1.5]} camera={{ position: [0, 0, 12], fov: 30 }} gl={{ alpha: true, antialias: true }}>
+      <SafeBoundary>
+      {!isLite() && hasWebGL2() && <Canvas frameloop={live ? 'always' : 'never'} dpr={[1, 1.5]} camera={{ position: [0, 0, 12], fov: 30 }} gl={{ alpha: true, antialias: true }}>
         <Scene activeRef={activeRef} focusRef={focusRef} />
         {/* compila todo por adelantado (sin trabón al aparecer la zona IA) */}
         <WarmUp delay={1500} />
-      </Canvas>
+      </Canvas>}
+      </SafeBoundary>
     </div>
   );
 };

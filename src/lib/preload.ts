@@ -23,6 +23,14 @@ export const loadState = () => {
 
 export const isPreloading = () => preloading;
 
+// Instante (performance.now) en que main.tsx monta la página, que se baja DESPUÉS de pintar la
+// pantalla de carga (import() de App). El Preloader mide con él los topes de la carga real.
+let appMountedAt: number | null = null;
+export const markAppMounting = () => {
+  appMountedAt = performance.now();
+};
+export const appMountTime = () => appMountedAt;
+
 // CALENTAMIENTO de secciones (para que no haya tirones al llegar a ellas): cada sección
 // registra una tarea que se ejecuta DURANTE la pantalla de carga (decodificar sus
 // imágenes, compilar shaders, crear texturas...). El Preloader espera a que terminen
@@ -105,7 +113,8 @@ export const endPreloading = () => {
 // la hoja (con tope) y luego se piden de verdad las familias que usa la página.
 const FONT_FAMILIES = [
   'Sora', 'Outfit', 'Anton', 'Gloock', 'Mona Sans', 'Fredoka', 'Caveat', 'JetBrains Mono',
-  'Playfair Display', 'Unbounded', 'Bagel Fat One', 'Inter',
+  'Playfair Display', 'Unbounded', 'Bagel Fat One',
+  // (Inter no va: solo es respaldo de Mona Sans en la pila y no se pinta; pedirla bajaba 48 kB inútiles)
 ];
 export const loadFonts = (timeoutMs = 5000) => {
   if (typeof document === 'undefined' || !document.fonts) return Promise.resolve();

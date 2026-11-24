@@ -1,3 +1,6 @@
+import { isLite, hasWebGL2 } from '../../../lib/deviceProfile';
+import { SafeBoundary } from '../../ui/SafeBoundary';
+import { OrbitMobile } from './OrbitMobile';
 import React, { useEffect, useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { WarmUp } from '../../canvas/WarmUp';
@@ -78,6 +81,11 @@ export const OrbitStage: React.FC<Props> = ({ reduced, paused, journey, children
   const focusCatData = focus ? ORBIT.cats[focus.cat] : null;
   const focusTechData = focus?.tech ? TECHS.find((t) => t.id === focus.tech) : null;
 
+  const fallback = (
+    <div className="absolute z-50 right-4 bottom-4 w-[min(24rem,48vw)] max-h-[72%] overflow-auto pointer-events-auto">
+      <OrbitMobile reduced />
+    </div>
+  );
   return (
     <div
       ref={stageRef}
@@ -87,7 +95,8 @@ export const OrbitStage: React.FC<Props> = ({ reduced, paused, journey, children
         if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'CANVAS') setLocked(null);
       }}
     >
-      <Canvas
+      <SafeBoundary fallback={fallback}>
+      {isLite() || !hasWebGL2() ? fallback : <Canvas
         aria-hidden
         className="!absolute inset-0"
         resize={{ offsetSize: true, scroll: false }}
@@ -98,7 +107,8 @@ export const OrbitStage: React.FC<Props> = ({ reduced, paused, journey, children
       >
         <OrbitScene shared={shared} />
         <WarmUp delay={1800} />
-      </Canvas>
+      </Canvas>}
+      </SafeBoundary>
 
       {/* etiquetas proyectadas (decorativas para lectores: la lista accesible va aparte) */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>

@@ -38,6 +38,12 @@ const CSS = `
 .cn-in .cn-l { animation: cn-in 620ms cubic-bezier(0.3, 1.4, 0.5, 1) var(--ei) both, cn-float var(--d) ease-in-out var(--dl) infinite; }
 .cn-wrap:not(.cn-in) .cn-l { animation: none; }
 .cn-wrap:hover .cn-l { animation-play-state: paused; transform: translateY(-4px) rotate(calc(var(--r) * -2)) scale(1.08); transition-delay: var(--hd); }
+/* la barra ya salió de la pantalla (useSceneScroll la marca y la oculta): sin esto el
+   flote de las 19 letras seguía recalculando estilos en CADA cuadro de toda la página
+   (medido: ~0,6-0,75 ms por cuadro, más de la mitad del recálculo en reposo de cada
+   sección). Solo se pausa el flote (la entrada cn-in, finita, termina igual). Al volver
+   a la vista sigue donde quedó. */
+[data-scene-hidden] .cn-in .cn-l { animation-play-state: running, paused; }
 @media (prefers-reduced-motion: reduce) { .cn-l, .cn-in .cn-l { animation: none; } }
 `;
 

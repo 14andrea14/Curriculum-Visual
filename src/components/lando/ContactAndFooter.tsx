@@ -1,3 +1,4 @@
+import { isLite } from '../../lib/deviceProfile';
 import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -37,7 +38,7 @@ export const ContactFooter: React.FC = () => {
     mm.add('(prefers-reduced-motion: no-preference)', () => {
       const q = gsap.utils.selector(root);
       const stage = q('.ft-stage')[0] as HTMLElement;
-      const canvas = q('.ft-liquid')[0] as HTMLCanvasElement;
+      const canvas = q('.ft-liquid')[0] as HTMLCanvasElement | undefined;
       const sky = q('.ft-sky')[0] as HTMLElement;
       const near = q('.ft-near')[0] as HTMLElement;
       // la sección arranca solapada con el final del tablero: lo que solapa es el tramo
@@ -51,13 +52,14 @@ export const ContactFooter: React.FC = () => {
       // final de FORMACIÓN) y termina en el pie de la página, con la escena a pantalla completa.
       let shown = false;
       let liquid: LiquidHandle | null = null;
+      const wake = () => liquid?.wake();
       const st = ScrollTrigger.create({
         trigger: root,
         start: () => `top bottom-=${overlap()}`,
         end: () => ScrollTrigger.maxScroll(window),
         invalidateOnRefresh: true,
-        onUpdate: () => liquid?.wake(),
-        onRefresh: () => liquid?.wake(),
+        onUpdate: wake,
+        onRefresh: wake,
       });
       // antes del tramo (una pantalla y media): despierta el tick para precalentar la escena
       const pre = ScrollTrigger.create({
@@ -65,30 +67,39 @@ export const ContactFooter: React.FC = () => {
         start: () => st.start - window.innerHeight * 1.5,
         end: () => st.start,
         invalidateOnRefresh: true,
-        onToggle: () => liquid?.wake(),
+        onToggle: wake,
       });
       // progreso directo del scroll (sin esperar al evento): lo lee el tick del líquido
       const read = () => {
         const span = st.end - st.start;
         return span > 0 ? (window.scrollY - st.start) / span : 0;
       };
-      liquid = createLiquid({
-        stage,
-        canvas,
-        read,
-        span: () => st.end - st.start,
-        onFrame: (p) => {
-          // paralaje: el cielo y la colina se acomodan a distinta velocidad
-          sky.style.transform = `translate3d(0,${(-6 * (1 - p)).toFixed(2)}%,0)`;
-          near.style.transform = `translate3d(0,${(10 * (1 - p)).toFixed(2)}%,0)`;
-          // contenido: entra con el líquido ya a media pantalla (con histéresis para no parpadear)
-          const on = shown ? p > 0.36 : p > 0.42;
-          if (on !== shown) {
-            shown = on;
-            ctrlRef.current?.(on);
-          }
-        },
-      });
+      const onFrame = (p: number) => {
+        // paralaje: el cielo y la colina se acomodan a distinta velocidad
+        sky.style.transform = `translate3d(0,${(-6 * (1 - p)).toFixed(2)}%,0)`;
+        near.style.transform = `translate3d(0,${(10 * (1 - p)).toFixed(2)}%,0)`;
+        // contenido: entra con el líquido ya a media pantalla (con histéresis para no parpadear)
+        const on = shown ? p > 0.36 : p > 0.42;
+        if (on !== shown) {
+          shown = on;
+          ctrlRef.current?.(on);
+        }
+      };
+      if (canvas) {
+        liquid = createLiquid({ stage, canvas, read, span: () => st.end - st.start, onFrame });
+      } else {
+        const reveal = () => {
+          const p = Math.max(0, Math.min(1, read()));
+          stage.style.visibility = p > 0 ? 'visible' : 'hidden';
+          stage.style.clipPath = p >= 1 ? '' : 'inset(' + (100 * (1 - p)) + '% 0 0)';
+          onFrame(p);
+        };
+        liquid = { wake: reveal, destroy: () => {
+          stage.style.visibility = '';
+          stage.style.clipPath = '';
+        } };
+        reveal();
+      }
       return () => {
         st.kill();
         pre.kill();
@@ -134,7 +145,7 @@ export const ContactFooter: React.FC = () => {
         />
       </div>
       {/* piel del líquido: borde translúcido, brillo, burbujas y gotas (un solo canvas 2D) */}
-      <canvas aria-hidden className="ft-liquid" />
+      {!isLite() && <canvas aria-hidden className="ft-liquid" />}
     </section>
   );
 };

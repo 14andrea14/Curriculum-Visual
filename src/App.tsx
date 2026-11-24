@@ -1,3 +1,4 @@
+import { isLite } from './lib/deviceProfile';
 import React from 'react';
 import { HeroSection } from './components/dom/HeroSection';
 import { TopNav } from './components/lando/TopNav';
@@ -22,7 +23,7 @@ export const App: React.FC = () => {
   useAssistedScroll();
 
   return (
-    <div className="relative min-h-screen bg-cyber-dark text-cyber-textBright selection:bg-neo-rose selection:text-white">
+    <div data-lite={isLite() || undefined} className="relative min-h-screen bg-cyber-dark text-cyber-textBright selection:bg-neo-rose selection:text-white">
       {/* Fondo ambiental liviano (CSS) detrás del Hero */}
       <div className="fixed inset-0 z-0 pointer-events-none bg-cyber-dark bg-radial-glow">
         <div className="absolute inset-0 scanlines-overlay opacity-20" />

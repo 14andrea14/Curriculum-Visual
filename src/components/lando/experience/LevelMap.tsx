@@ -1,3 +1,5 @@
+import { refreshScroll } from '../../../lib/refreshScroll';
+import { isLite } from '../../../lib/deviceProfile';
 import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -43,8 +45,9 @@ export const LevelMap: React.FC<{ levels: Exp[]; reduced: boolean }> = ({ levels
     if (!wrap) return;
     let raf = 0;
     const measure = () => {
-      cancelAnimationFrame(raf);
+      if (raf) return;
       raf = requestAnimationFrame(() => {
+        raf = 0;
         const r = wrap.getBoundingClientRect();
         const nodes = nodeRefs.current.map((n) => {
           if (!n) return { x: 0, y: 0 };
@@ -52,7 +55,8 @@ export const LevelMap: React.FC<{ levels: Exp[]; reduced: boolean }> = ({ levels
           return { x: Math.round(b.left + b.width / 2 - r.left), y: Math.round(b.top + b.height / 2 - r.top) };
         });
         const next = { w: Math.round(r.width), h: Math.round(wrap.offsetHeight), nodes, wide: window.matchMedia(Q_WIDE).matches };
-        setGeo((g) => (g.w === next.w && g.h === next.h && JSON.stringify(g.nodes) === JSON.stringify(next.nodes) ? g : next));
+        setGeo((g) => (g.w === next.w && g.h === next.h && g.wide === next.wide &&
+          g.nodes.length === nodes.length && g.nodes.every((n, i) => n.x === nodes[i].x && n.y === nodes[i].y) ? g : next));
       });
     };
     measure();
@@ -88,13 +92,13 @@ export const LevelMap: React.FC<{ levels: Exp[]; reduced: boolean }> = ({ levels
     if (!p || !d) return;
     const L = p.getTotalLength();
     len.current = L;
-    const N = 600;
+    const N = isLite() ? 150 : 600;
     lut.current = Array.from({ length: N + 1 }, (_, i) => {
       const l = (L * i) / N;
       const pt = p.getPointAtLength(l);
       return { l, x: pt.x, y: pt.y };
     });
-    ScrollTrigger.refresh();
+    refreshScroll();
   }, [d]);
 
   // ---------- recorrido con el scroll ----------
@@ -107,11 +111,13 @@ export const LevelMap: React.FC<{ levels: Exp[]; reduced: boolean }> = ({ levels
     const mx = marker ? gsap.quickTo(marker, 'x', { duration: 0.35, ease: 'power3.out' }) : null;
     const my = marker ? gsap.quickTo(marker, 'y', { duration: 0.35, ease: 'power3.out' }) : null;
 
-    const update = () => {
+    let lastOffset: number | undefined;
+    let lastAlpha: number | undefined;
+    const update = (self: ScrollTrigger) => {
       const T = lut.current;
       if (!T.length) return;
-      const top = wrap.getBoundingClientRect().top;
-      const lineY = window.innerHeight * LINE - top;
+      // start es top bottom: trasladamos esa medida al borde superior del documento.
+      const lineY = self.scroll() - self.start - window.innerHeight * (1 - LINE);
       // primer punto cuya altura supera la línea (el camino siempre baja)
       let lo = 0;
       let hi = T.length - 1;
@@ -122,9 +128,16 @@ export const LevelMap: React.FC<{ levels: Exp[]; reduced: boolean }> = ({ levels
       }
       const pt = T[lo];
       // dasharray "L0 L0" con offset L0 - l -> se ve exactamente el tramo [0, l]
-      if (reveal) reveal.style.strokeDashoffset = String(L0 - pt.l);
+      if (reveal && pt.l !== lastOffset) {
+        reveal.style.strokeDashoffset = String(L0 - pt.l);
+        lastOffset = pt.l;
+      }
       // al terminar el camino la estrella la "hereda" la salida (WarpOut)
-      if (marker) gsap.set(marker, { autoAlpha: lineY > T[T.length - 1].y + 2 ? 0 : 1 });
+      const alpha = lineY > T[T.length - 1].y + 2 ? 0 : 1;
+      if (marker && lastAlpha !== alpha) {
+        gsap.set(marker, { autoAlpha: alpha });
+        lastAlpha = alpha;
+      }
       mx?.(pt.x);
       my?.(Math.min(Math.max(lineY, 0), T[T.length - 1].y));
       const n = geo.nodes.filter((nd) => nd.y <= lineY + 2).length;
@@ -134,7 +147,7 @@ export const LevelMap: React.FC<{ levels: Exp[]; reduced: boolean }> = ({ levels
       }
     };
     const st = ScrollTrigger.create({ trigger: wrap, start: 'top bottom', end: 'bottom top', onUpdate: update, onRefresh: update });
-    update();
+    update(st);
 
     return () => {
       st.kill();

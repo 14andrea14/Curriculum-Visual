@@ -1,3 +1,5 @@
+import { refreshScroll } from '../../../lib/refreshScroll';
+import { isLite } from '../../../lib/deviceProfile';
 import React, { useEffect, useMemo, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -98,7 +100,7 @@ export const BootTransition: React.FC<{ total: number; firstYear: number }> = ({
     // paño (se borra por bloques) y cielo (se pinta por bloques)
     const felt = createPixelDissolve(feltC, {
       mode: 'clear',
-      image: optionalImage('/experience/felt.webp'),
+      image: optionalImage(isLite() ? '/experience/felt-lite.webp' : '/experience/felt.webp'),
       seed: 5,
       iris: 0.55,
       color: (nx, ny) => {
@@ -133,15 +135,19 @@ export const BootTransition: React.FC<{ total: number; firstYear: number }> = ({
         const vw = () => stage.clientWidth;
         const vh = () => stage.clientHeight;
         // escala para que la PANTALLA llene el viewport
-        const S = () => Math.max(vw() / (SCREEN.w * U()), vh() / (SCREEN.h * U())) * 1.06;
+        const lite = isLite();
+        const S = () => {
+          const fill = Math.max(vw() / (SCREEN.w * U()), vh() / (SCREEN.h * U())) * 1.06;
+          return lite ? Math.min(2.5, fill) : fill;
+        };
         // centro de la pantalla respecto del centro de la consola (en u)
         const SCREEN_CY = SCREEN.y + SCREEN.h / 2 - 0.8;
 
-        gsap.set(q('.gx-flipper'), { transformPerspective: 1600, rotationY: 0 });
+        if (!lite) gsap.set(q('.gx-flipper'), { transformPerspective: 1600, rotationY: 0 });
 
         const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
         const tl = gsap.timeline({
-          defaults: { ease: 'none' },
+          defaults: lite ? { ease: 'none', force3D: false } : { ease: 'none' },
           scrollTrigger: {
             trigger: stage,
             start: 'top top',
@@ -184,7 +190,7 @@ export const BootTransition: React.FC<{ total: number; firstYear: number }> = ({
         }
 
         // 0b) ya fijada: la carta levita y se inclina con profundidad; asoma la cuadrícula
-        tl.fromTo(q('.gx-hover'), { y: 0, rotationX: 0 }, { y: () => -U() * 0.06, rotationX: 12, duration: 0.6, ease: 'power2.out' }, 0)
+        tl.fromTo(q('.gx-hover'), { y: 0, rotationX: 0 }, { y: () => -U() * 0.06, rotationX: lite ? 0 : 12, duration: 0.6, ease: 'power2.out' }, 0)
           .to(q('.gx-hover'), { y: 0, rotationX: 0, duration: 0.7, ease: 'power2.inOut' }, 1.0)
           .fromTo(q('.gx-shadow'), { scale: 1, opacity: 1 }, { scale: 0.78, opacity: 0.55, duration: 0.6, ease: 'power2.out' }, 0)
           .to(q('.gx-shadow'), { opacity: 0, duration: 0.6 }, 1.3)
@@ -196,8 +202,13 @@ export const BootTransition: React.FC<{ total: number; firstYear: number }> = ({
 
         // 1) volteo carta -> cartucho
         tl.fromTo(q('.gx-flip'), { rotation: -7, scale: 0.96 }, { rotation: 0, scale: 1.04, duration: 0.8, ease: 'power2.out' }, 0)
-          .fromTo(q('.gx-flipper'), { rotationY: 0 }, { rotationY: 180, duration: 1.3, ease: 'power2.inOut' }, 0.15)
           .to(q('.gx-flip'), { scale: 1, duration: 0.6, ease: 'power2.inOut' }, 0.95);
+        if (lite) {
+          tl.to(q('.gx-face'), { autoAlpha: 0, duration: 0.6 }, 0.15)
+            .fromTo(q('.gx-cartridge'), { autoAlpha: 0 }, { autoAlpha: 1, duration: 0.7 }, 0.75);
+        } else {
+          tl.fromTo(q('.gx-flipper'), { rotationY: 0 }, { rotationY: 180, duration: 1.3, ease: 'power2.inOut' }, 0.15);
+        }
         // ráfaga de destellos al pasar de canto
         q('.gx-burst').forEach((el, i) => {
           const b = burst[i];
@@ -269,10 +280,11 @@ export const BootTransition: React.FC<{ total: number; firstYear: number }> = ({
             8.0 + i * 0.12
           );
         });
+        if (lite) tl.set(q('.gx-zoom'), { autoAlpha: 0, scale: 1, y: 0 }, 9.5);
         tl.to({}, { duration: 0.3 }); // respiro antes de soltar
       }, stage);
       ScrollTrigger.sort();
-      ScrollTrigger.refresh();
+      refreshScroll();
     };
 
     // Igual que la mesa de póker: se arma después de las fuentes + un momento,
@@ -397,9 +409,9 @@ export const BootTransition: React.FC<{ total: number; firstYear: number }> = ({
             }}
             style={{ left: 'calc(var(--u) * -0.4)', top: 'calc(var(--u) * -0.56)', width: 'calc(var(--u) * 0.8)', height: 'calc(var(--u) * 1.12)', transform: 'rotate(-7deg)' }}
           >
-            <div className="gx-hover relative w-full h-full" style={{ transformStyle: 'preserve-3d' }}>
-            <div className="gx-flipper relative w-full h-full" style={{ transformStyle: 'preserve-3d' }}>
-              <div className="absolute inset-0" style={{ backfaceVisibility: 'hidden', WebkitBackfaceVisibility: 'hidden', fontSize: 'calc(var(--u) / 100)' }}>
+            <div className="gx-hover relative w-full h-full" style={{ transformStyle: isLite() ? undefined : 'preserve-3d' }}>
+            <div className="gx-flipper relative w-full h-full" style={{ transformStyle: isLite() ? undefined : 'preserve-3d' }}>
+              <div className="gx-face absolute inset-0" style={{ backfaceVisibility: isLite() ? undefined : 'hidden', WebkitBackfaceVisibility: isLite() ? undefined : 'hidden', fontSize: 'calc(var(--u) / 100)' }}>
                 <CardBackFace />
                 {/* luz de contorno magenta (gira con la carta; late con opacidad) */}
                 <div className="gx-rim absolute inset-0 pointer-events-none">
@@ -413,14 +425,15 @@ export const BootTransition: React.FC<{ total: number; firstYear: number }> = ({
                 </div>
               </div>
               <div
-                className="absolute left-0 right-0"
+                className="gx-cartridge absolute left-0 right-0"
                 style={{
                   top: 'calc(var(--u) * 0.11)',
                   height: 'calc(var(--u) * 0.9)',
-                  transform: 'rotateY(180deg)',
-                  backfaceVisibility: 'hidden',
-                  WebkitBackfaceVisibility: 'hidden',
-                  filter: 'drop-shadow(0 calc(var(--u) * 0.03) 0 rgba(80,0,60,.35))',
+                  transform: isLite() ? undefined : 'rotateY(180deg)',
+                  visibility: isLite() ? 'hidden' : undefined,
+                  backfaceVisibility: isLite() ? undefined : 'hidden',
+                  WebkitBackfaceVisibility: isLite() ? undefined : 'hidden',
+                  filter: isLite() ? undefined : 'drop-shadow(0 calc(var(--u) * 0.03) 0 rgba(80,0,60,.35))',
                 }}
               >
                 <Cartridge total={total} firstYear={firstYear} />

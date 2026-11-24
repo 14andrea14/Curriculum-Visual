@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { isLite, listenMedia } from '../../lib/deviceProfile';
 import { useHeroFrames } from '../../hooks/useHeroFrames';
-import { FrameBitmapCache, drawSequence, newSequenceState, type FrameTransform, type FrameRect } from '../../lib/frameSequence';
+import { coverRect, liteCrop, LiteFrameWindow, FrameBitmapCache, drawSequence, newSequenceState, type FrameTransform, type FrameRect } from '../../lib/frameSequence';
 
 // startAlign: ajuste geométrico aplicado completo en progress 0 y que se va
 // soltando (suave) hasta desaparecer en progress = until. Sirve para que el
@@ -22,6 +23,8 @@ function alignAt(progress: number, a?: StartAlign): FrameTransform | undefined {
 // viven en lib/frameSequence.ts (ver ahí el porqué).
 interface ScrollFrameStageProps {
   progress: number;
+  liteActive?: boolean;
+  liteFallbackFrame?: number;
   framesPath: string;
   startAlign?: StartAlign;
   // true para secuencias recortadas (con alfa): sin fondo propio, deja ver
@@ -58,8 +61,7 @@ const ScrollFrameStageInner: React.FC<ScrollFrameStageProps> = ({ progress, fram
     const media = window.matchMedia('(min-width: 1024px)');
     const update = () => setDesktopMotion(media.matches);
     update();
-    media.addEventListener('change', update);
-    return () => media.removeEventListener('change', update);
+    return listenMedia(media, update);
   }, [desktopHoldFrame]);
   const heroFrames = useHeroFrames(framesPath, desktopMotion ? desktopHoldFrame : undefined);
   useEffect(() => {
@@ -186,6 +188,183 @@ const ScrollFrameStageInner: React.FC<ScrollFrameStageProps> = ({ progress, fram
   );
 };
 
+// En móvil la ventana viene y se va con la fase del pin. Solo pide el cuadro
+// actual y sus vecinos, y mantiene una pose de respaldo mientras los decodifica.
+const LiteScrollFrameStage: React.FC<ScrollFrameStageProps> = ({ progress, framesPath, rectAt, desktopHoldFrame, liteFallbackFrame }) => {
+  const stage = useRef<HTMLDivElement>(null);
+  const canvas = useRef<HTMLCanvasElement>(null);
+  const fallback = useRef<HTMLImageElement>(null);
+  const update = useRef<() => void>(() => {});
+  const position = useRef(progress);
+  position.current = progress;
+  const filename = (index: number) => framesPath + '/frame_' + String(index + 1).padStart(3, '0') + '.webp';
+
+  useEffect(() => {
+    const host = stage.current!;
+    const cv = canvas.current!;
+    const pose = fallback.current!;
+    const ctx = cv.getContext('2d');
+    const lifetime = new AbortController();
+    const blobs = new Map<number, Blob>();
+    const requests = new Map<number, AbortController>();
+    const failed = new Set<number>();
+    const windowFrames = new LiteFrameWindow((k) => blobs.get(k) ?? null, 2, 1);
+    let info: { count: number; width: number; height: number } | undefined;
+    let samples: number[] = [];
+    let target = -1;
+    let direction = 1;
+    let lastDrawn: ReturnType<typeof windowFrames.get>;
+    let lastPainted = -1;
+    let crop: ReturnType<typeof liteCrop>;
+
+    const paint = () => {
+      if (!ctx || !crop || !info || target < 0) return;
+      const current = windowFrames.get(target) ?? windowFrames.nearestReady(target);
+      if (!current) {
+        if (lastDrawn && Math.abs(target - lastPainted) > 2 && pose.complete && pose.naturalWidth) {
+          ctx.clearRect(0, 0, cv.width, cv.height);
+          lastDrawn = undefined;
+          pose.style.visibility = 'visible';
+        }
+        return;
+      }
+      if (current === lastDrawn) return;
+      lastDrawn = current;
+      lastPainted = target;
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      if (current.cropped) ctx.drawImage(current.s, crop.dx, crop.dy, crop.dw, crop.dh);
+      else ctx.drawImage(current.s, crop.sx, crop.sy, crop.sw, crop.sh, crop.dx, crop.dy, crop.dw, crop.dh);
+      pose.style.visibility = 'hidden';
+    };
+
+    const sync = () => {
+      if (!info || !crop) return;
+      const frame = Math.round(position.current * (info.count - 1));
+      const next = samples.reduce((best, value, k) => Math.abs(value - frame) < Math.abs(samples[best] - frame) ? k : best, 0);
+      if (next !== target) {
+        if (target >= 0) direction = Math.sign(next - target);
+        target = next;
+      }
+      const wanted = [target, target + direction, target + 2 * direction, target - direction]
+        .filter((k) => k >= 0 && k < samples.length);
+      for (const [k, request] of requests) {
+        if (!wanted.includes(k)) {
+          request.abort();
+          requests.delete(k);
+        }
+      }
+      for (const k of blobs.keys()) if (Math.abs(k - target) > 3) blobs.delete(k);
+      for (const k of wanted) {
+        if (requests.size >= 3) break;
+        if (blobs.has(k) || requests.has(k) || failed.has(k)) continue;
+        const controller = new AbortController();
+        requests.set(k, controller);
+        fetch(filename(samples[k]), { signal: controller.signal })
+          .then((r) => {
+            if (!r.ok || r.headers.get('content-type')?.includes('text/html')) throw new Error('Fotograma no disponible');
+            return r.blob();
+          })
+          .then((blob) => {
+            if (!controller.signal.aborted) blobs.set(k, blob);
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) failed.add(k);
+          })
+          .finally(() => {
+            if (controller.signal.aborted || lifetime.signal.aborted) return;
+            requests.delete(k);
+            sync();
+          });
+      }
+      windowFrames.request(target, direction, samples.length);
+      paint();
+    };
+    const resize = () => {
+      const w = host.clientWidth;
+      const h = host.clientHeight;
+      if (!w || !h) return;
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.25);
+      const rect = rectAt?.(0, w, h) ?? coverRect(w, h);
+      Object.assign(pose.style, { left: rect.x + 'px', top: rect.y + 'px', width: rect.w + 'px', height: rect.h + 'px' });
+      if (!info) return;
+      const width = Math.round(w * dpr);
+      const height = Math.round(h * dpr);
+      if (crop && cv.width === width && cv.height === height) return;
+      cv.width = width;
+      cv.height = height;
+      lastDrawn = undefined;
+      pose.style.visibility = 'visible';
+      crop = liteCrop(info.width, info.height, { x: rect.x * dpr, y: rect.y * dpr, w: rect.w * dpr, h: rect.h * dpr }, width, height);
+      windowFrames.setCrop(crop);
+      sync();
+    };
+
+    const observer = new ResizeObserver(resize);
+    observer.observe(host);
+    resize();
+    update.current = sync;
+    windowFrames.onReady = paint;
+    fetch(framesPath + '/manifest.json', { signal: lifetime.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error('Manifiesto no disponible');
+        return r.json();
+      })
+      .then((manifest) => {
+        if (lifetime.signal.aborted || !Number.isInteger(manifest.count) || manifest.count < 1 || !manifest.width || !manifest.height) return;
+        info = manifest;
+        const indices = new Set<number>([0, manifest.count - 1]);
+        if (desktopHoldFrame !== undefined && desktopHoldFrame < manifest.count) indices.add(desktopHoldFrame);
+        for (let i = 0; i < manifest.count; i += desktopHoldFrame === undefined ? 5 : 7) indices.add(i);
+        samples = [...indices].sort((a, b) => a - b);
+        resize();
+      })
+      .catch(() => { /* la pose queda visible si falta el manifiesto */ });
+
+    return () => {
+      observer.disconnect();
+      update.current = () => {};
+      lifetime.abort();
+      for (const request of requests.values()) request.abort();
+      windowFrames.dispose();
+      cv.width = cv.height = 1;
+    };
+  }, [framesPath, desktopHoldFrame, rectAt]);
+
+  useEffect(() => update.current(), [progress]);
+
+  const poseIndex = desktopHoldFrame !== undefined && progress > 0.25 ? desktopHoldFrame : (liteFallbackFrame ?? 0);
+  return (
+    <div ref={stage} className="absolute inset-0 overflow-hidden">
+            <img
+        ref={fallback}
+        src={filename(poseIndex)}
+        alt=""
+        decoding="async"
+        onLoad={() => update.current()}
+        className="absolute max-w-none"
+        style={{ opacity: liteFallbackFrame !== undefined && progress <= 0.08 ? 0 : undefined }}
+      />
+      <canvas ref={canvas} width={1} height={1} className="absolute inset-0 w-full h-full" />
+    </div>
+  );
+};
+
+const NearbyLiteSequence: React.FC<ScrollFrameStageProps> = (props) => {
+  const root = useRef<HTMLDivElement>(null);
+  const [near, setNear] = useState(true);
+  useEffect(() => {
+    const observer = new IntersectionObserver(([entry]) => setNear(entry.isIntersecting), { rootMargin: '120px' });
+    observer.observe(root.current!);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={root} className="absolute inset-0">{near && <LiteScrollFrameStage {...props} />}</div>;
+};
+
+const ScrollFrameStageByMode: React.FC<ScrollFrameStageProps> = (props) => {
+  if (!isLite()) return <ScrollFrameStageInner {...props} />;
+  return props.liteActive ? <NearbyLiteSequence {...props} /> : null;
+};
+
 // HeroSection se re-renderiza en cada cuadro del scroll: memo evita repetir
 // este render cuando nada visible cambió. Las funciones (onStatus, rectAt) se
 // leen siempre por ref, así que su identidad no cuenta (el padre pasa onStatus
@@ -193,10 +372,12 @@ const ScrollFrameStageInner: React.FC<ScrollFrameStageProps> = ({ progress, fram
 const sameAlign = (a?: StartAlign, b?: StartAlign) =>
   a === b || (!!a && !!b && a.s === b.s && a.dx === b.dx && a.dy === b.dy && a.until === b.until);
 export const ScrollFrameStage = React.memo(
-  ScrollFrameStageInner,
+  ScrollFrameStageByMode,
   (a, b) =>
     a.progress === b.progress &&
     a.framesPath === b.framesPath &&
+    a.liteActive === b.liteActive &&
+    a.liteFallbackFrame === b.liteFallbackFrame &&
     a.transparent === b.transparent &&
     a.desktopHoldFrame === b.desktopHoldFrame &&
     sameAlign(a.startAlign, b.startAlign) &&

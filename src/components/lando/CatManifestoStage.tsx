@@ -1,3 +1,5 @@
+import { usePauseOffscreen } from './usePauseOffscreen';
+import { isLite } from '../../lib/deviceProfile';
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CircuitBg } from './shared';
 import { WORDS, MANIFESTO_TAGLINE } from './ManifestoSection';
@@ -131,6 +133,7 @@ const CatManifestoStageImpl: React.FC<StageProps> = ({ enter, walk, cat, classNa
   const spotRef = useRef<HTMLDivElement>(null);
   const circuitRef = useRef<HTMLDivElement>(null);
   const trailRef = useRef<HTMLCanvasElement>(null);
+  usePauseOffscreen(rootRef);
   const posRef = useRef<Pos[]>([]);
   const activeRef = useRef(false);
   const kickRef = useRef<() => void>(() => {});
@@ -156,6 +159,7 @@ const CatManifestoStageImpl: React.FC<StageProps> = ({ enter, walk, cat, classNa
     const root = rootRef.current;
     if (!root) return;
     let raf = 0;
+    let disposed = false;
     const measure = () => {
       raf = 0;
       const r = root.getBoundingClientRect();
@@ -170,7 +174,7 @@ const CatManifestoStageImpl: React.FC<StageProps> = ({ enter, walk, cat, classNa
       setPos(next);
     };
     const schedule = () => {
-      if (!raf) raf = requestAnimationFrame(measure);
+      if (!disposed && !raf) raf = requestAnimationFrame(measure);
     };
     measure();
     const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(schedule) : null;
@@ -178,6 +182,7 @@ const CatManifestoStageImpl: React.FC<StageProps> = ({ enter, walk, cat, classNa
     window.addEventListener('resize', schedule);
     document.fonts?.ready.then(schedule).catch(() => {});
     return () => {
+      disposed = true;
       ro?.disconnect();
       window.removeEventListener('resize', schedule);
       if (raf) cancelAnimationFrame(raf);
@@ -188,7 +193,7 @@ const CatManifestoStageImpl: React.FC<StageProps> = ({ enter, walk, cat, classNa
   // cercanas. Todo por rAF escribiendo estilos en refs (sin setState).
   useEffect(() => {
     const root = rootRef.current;
-    if (!root) return;
+    if (isLite() || !root) return;
     let raf = 0;
     let has = false; // ya hubo movimiento del puntero
     let tx = 0, ty = 0; // objetivo normalizado -1..1
@@ -630,7 +635,7 @@ const CatManifestoStageImpl: React.FC<StageProps> = ({ enter, walk, cat, classNa
 
       {/* piso opcional bajo el gato */}
       {floorOk && (
-        <img
+        <img decoding="async"
           src="/stage/cat-floor.webp"
           alt=""
           aria-hidden
@@ -691,7 +696,7 @@ const CatManifestoStageImpl: React.FC<StageProps> = ({ enter, walk, cat, classNa
       </div>
 
       {/* estela neón del cursor (por encima de las palabras, se suma con "lighter") */}
-      <canvas ref={trailRef} aria-hidden className="absolute inset-0 z-[33] w-full h-full pointer-events-none" />
+      {!isLite() && <canvas ref={trailRef} aria-hidden className="absolute inset-0 z-[33] w-full h-full pointer-events-none" />}
 
       {/* grano fino animado + viñeta */}
       <div aria-hidden className="absolute inset-0 z-[35] pointer-events-none overflow-hidden">

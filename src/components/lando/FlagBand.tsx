@@ -1,3 +1,5 @@
+import { refreshScroll } from '../../lib/refreshScroll';
+import { isLite } from '../../lib/deviceProfile';
 import React, { useEffect, useRef } from 'react';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -67,7 +69,6 @@ const SIGN_Y = 150;
 const SIGN_TEXT = { textAnchor: 'middle', fontSize: 150, textLength: 520, lengthAdjust: 'spacingAndGlyphs' } as const;
 const SIGN_DEPTH = ['#1F0420', '#2E0630', '#410A42', '#560E54', '#6E1468', '#87197D'];
 // fuente "street" de la firma (Google Fonts), se pide una sola vez
-const SIGN_FONT_URL = 'https://fonts.googleapis.com/css2?family=Sedgwick+Ave+Display&display=swap';
 
 // cuánto empuja el scroll (px recorridos de punta a punta de la sección) y la deriva (px/s)
 const PUSH = 720;
@@ -323,13 +324,14 @@ export const FlagBand: React.FC = () => {
   const posesRef = useRef<HTMLDivElement>(null);
   // poses recortadas (fondo transparente) de public/poses/poses.json; sin manifiesto,
   // se usa el retrato de la portada
-  const [poses, setPoses] = React.useState<string[]>([FALLBACK_POSE]);
+  const [poses, setPoses] = React.useState<string[]>(() => [isLite() ? '/poses/pose-1.webp' : FALLBACK_POSE]);
   const poseIdx = useRef(0);
 
   // manifiesto de poses: ["pose-1.webp", ...]. Si falta (o el servidor devuelve el
   // index.html del SPA en su lugar), se queda el retrato de respaldo. Las poses se
   // precargan para que el cambio con el mouse no parpadee.
   useEffect(() => {
+    if (isLite()) return;
     let alive = true;
     // calentamiento de efectos de pintura de las secciones de abajo (detrás de la carga)
     const offPaint = registerPaintWarmup();
@@ -383,16 +385,6 @@ export const FlagBand: React.FC = () => {
       offPoses();
       finish();
     };
-  }, []);
-
-  // fuente de grafiti de la firma: se agrega una sola vez al <head>
-  useEffect(() => {
-    if (document.querySelector('link[data-fb-sign-font]')) return;
-    const l = document.createElement('link');
-    l.rel = 'stylesheet';
-    l.href = SIGN_FONT_URL;
-    l.dataset.fbSignFont = '';
-    document.head.appendChild(l);
   }, []);
 
   // muestra la pose i (fundido de 150 ms vía CSS); sin re-render de React
@@ -465,8 +457,19 @@ export const FlagBand: React.FC = () => {
     ) as Record<Route, Record<'base' | 'glow' | 'lit' | 'head' | 'halo' | 'dot', SVGElement[]>>;
     const pads = Array.from({ length: N_PADS }, (_, i) => q(`[data-pad="${i}"]`));
     const rings = q('[data-ring]');
+    // Escritura con caché por elemento: setAttribute con el MISMO valor igual invalida el
+    // estilo del nodo (medido: los ~40 círculos de las pistas se recalculaban en cada cuadro
+    // de la coreografía aunque su valor no cambiara). Solo se toca el DOM si el valor cambió.
+    const attrCache = new WeakMap<Element, Map<string, string>>();
+    const setAttrC = (el: Element, name: string, v: string) => {
+      let m = attrCache.get(el);
+      if (!m) attrCache.set(el, (m = new Map()));
+      if (m.get(name) === v) return;
+      m.set(name, v);
+      el.setAttribute(name, v);
+    };
     const setAll = (list: SVGElement[], name: string, v: string) => {
-      for (const el of list) el.setAttribute(name, v);
+      for (const el of list) setAttrC(el, name, v);
     };
 
     // ---------- medidas (solo en montaje / resize / refresh) ----------
@@ -705,13 +708,21 @@ export const FlagBand: React.FC = () => {
     );
 
     measure();
-    const ro = new ResizeObserver(() => measure());
+    let measureRaf = 0;
+    let disposed = false;
+    const queueMeasure = () => {
+      if (disposed || measureRaf) return;
+      measureRaf = requestAnimationFrame(() => {
+        measureRaf = 0;
+        measure();
+      });
+    };
+    const ro = new ResizeObserver(queueMeasure);
     ro.observe(a);
     ro.observe(b);
     ro.observe(sec);
-    document.fonts?.ready.then(measure).catch(() => {});
-    const onRefresh = () => measure();
-    ScrollTrigger.addEventListener('refresh', onRefresh);
+    document.fonts?.ready.then(queueMeasure).catch(() => {});
+    ScrollTrigger.addEventListener('refresh', queueMeasure);
 
     // ---------- pintado de la corriente (solo cuando P cambia) ----------
     let recedeK = -1;
@@ -746,10 +757,12 @@ export const FlagBand: React.FC = () => {
         setAll(e.head, 'stroke-dashoffset', (hl - s).toFixed(2));
         setAll(e.head, 'opacity', hv.toFixed(3));
         const [hx, hy] = pointAt(pts, s);
-        for (const c of [...e.dot, ...e.halo]) {
-          c.setAttribute('cx', hx.toFixed(1));
-          c.setAttribute('cy', hy.toFixed(1));
-        }
+        const hxs = hx.toFixed(1);
+        const hys = hy.toFixed(1);
+        setAll(e.dot, 'cx', hxs);
+        setAll(e.dot, 'cy', hys);
+        setAll(e.halo, 'cx', hxs);
+        setAll(e.halo, 'cy', hys);
         setAll(e.dot, 'opacity', hv.toFixed(3));
         setAll(e.halo, 'opacity', (hv * 0.3).toFixed(3));
       }
@@ -888,7 +901,7 @@ export const FlagBand: React.FC = () => {
       }
       // palabras / tarjetas / gota: cada cuadro (paralaje del mouse), escrituras con caché
       if (!reduce) extrasRef.current?.frame(now, P, secTop);
-      if (!reduce) signFrame(dt, P);
+      if (!reduce && !isLite()) signFrame(dt, P);
     };
 
     // ---------- firma que reacciona al mouse ----------
@@ -913,7 +926,7 @@ export const FlagBand: React.FC = () => {
       ptr.x = e.clientX;
       ptr.y = e.clientY;
     };
-    window.addEventListener('pointermove', onPtr, { passive: true });
+    if (!isLite()) window.addEventListener('pointermove', onPtr, { passive: true });
     let signAwake = true;
     const signFrame = (dt: number, P: number) => {
       if (dt <= 0) return;
@@ -978,11 +991,11 @@ export const FlagBand: React.FC = () => {
         return d.toFixed(2);
       }).join(' ');
       for (const L of signLayers) {
-        L.el.setAttribute('rotate', rs);
-        L.el.setAttribute('dy', ds);
+        setAttrC(L.el, 'rotate', rs);
+        setAttrC(L.el, 'dy', ds);
         if (L.k) {
-          L.el.setAttribute('x', (SIGN_X + L.bx + L.k * light.x).toFixed(2));
-          L.el.setAttribute('y', (SIGN_Y + L.by + L.k * light.y).toFixed(2));
+          setAttrC(L.el, 'x', (SIGN_X + L.bx + L.k * light.x).toFixed(2));
+          setAttrC(L.el, 'y', (SIGN_Y + L.by + L.k * light.y).toFixed(2));
         }
       }
     };
@@ -1013,7 +1026,7 @@ export const FlagBand: React.FC = () => {
 
     // primer pintado inmediato (sin esperar al IO) para que no haya salto
     paint(performance.now());
-    ScrollTrigger.refresh();
+    refreshScroll();
 
     // ---------- scroll asistido (motor central: src/lib/assistedScroll.ts) ----------
     // Un gesto viaja a la siguiente parada a un ritmo fijo. Las paradas son momentos en que la
@@ -1072,8 +1085,10 @@ export const FlagBand: React.FC = () => {
       unregisterStops?.();
       io.disconnect();
       window.removeEventListener('pointermove', onPtr);
+      disposed = true;
+      cancelAnimationFrame(measureRaf);
       ro.disconnect();
-      ScrollTrigger.removeEventListener('refresh', onRefresh);
+      ScrollTrigger.removeEventListener('refresh', queueMeasure);
       triggers.forEach((t) => t.kill());
       if (raf) cancelAnimationFrame(raf);
       for (const el of recede) {
@@ -1285,7 +1300,7 @@ export const FlagBand: React.FC = () => {
 
         {/* vacíos laterales mientras baja la corriente: stack (izq.), gota de vidrio 3D y
             tarjetas de vidrio (der.). Se retiran antes de que entren filas y foto. */}
-        <FlagExtras apiRef={extrasRef} />
+        {!isLite() && <FlagExtras apiRef={extrasRef} />}
 
         {/* Transición suave hacia la mesa de póker para evitar corte brusco en móvil */}
         <div

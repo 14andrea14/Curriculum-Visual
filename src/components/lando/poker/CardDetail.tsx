@@ -1,3 +1,4 @@
+import { isLite } from '../../../lib/deviceProfile';
 import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import gsap from 'gsap';
@@ -26,7 +27,9 @@ export const CardDetail: React.FC<{ p: ProjectItem; rank: string; onClose: () =>
     const ctx = gsap.context(() => {
       if (reduce) return;
       gsap.from(root.current, { autoAlpha: 0, duration: 0.3, ease: 'power2.out' });
-      gsap.from(card.current, { y: 60, rotationY: -35, rotation: -6, scale: 0.9, duration: 0.7, ease: 'expo.out', transformPerspective: 1200 });
+      gsap.from(card.current, isLite()
+        ? { y: 22, opacity: 0, duration: 0.35, ease: 'power2.out' }
+        : { y: 60, rotationY: -35, rotation: -6, scale: 0.9, duration: 0.7, ease: 'expo.out', transformPerspective: 1200 });
       gsap.from('.pk-detail-txt > *', { y: 24, autoAlpha: 0, duration: 0.5, stagger: 0.05, delay: 0.12, ease: 'power3.out' });
     }, root);
     return () => {
@@ -46,8 +49,8 @@ export const CardDetail: React.FC<{ p: ProjectItem; rank: string; onClose: () =>
       className="fixed inset-0 z-[300] overflow-y-auto overflow-x-hidden p-4 sm:p-10"
       style={{
         background: 'rgba(3, 8, 6, 0.96)',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
+        backdropFilter: isLite() ? undefined : 'blur(16px)',
+        WebkitBackdropFilter: isLite() ? undefined : 'blur(16px)',
       }}
       onClick={onClose}
       data-lenis-prevent

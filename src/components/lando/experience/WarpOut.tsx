@@ -1,3 +1,4 @@
+import { refreshScroll } from '../../../lib/refreshScroll';
 import React, { useEffect, useMemo, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -148,7 +149,7 @@ export const WarpOut: React.FC<{ reduced: boolean }> = ({ reduced }) => {
         tl.fromTo(q('.gx-w-rest'), { opacity: 0, y: () => vh() * 0.04 }, { opacity: 1, y: 0, duration: isMobile ? 1.0 : 1.6, ease: 'power2.out' }, isMobile ? 2.2 : 3.0);
       }, stage);
       ScrollTrigger.sort();
-      ScrollTrigger.refresh();
+      refreshScroll();
       window.dispatchEvent(new Event(WARP_OUT_READY));
     };
 

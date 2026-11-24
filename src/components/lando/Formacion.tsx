@@ -1,3 +1,4 @@
+import { isLite, listenMedia } from '../../lib/deviceProfile';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -110,8 +111,7 @@ function useMedia(query: string) {
     if (!mq) return;
     const on = () => setM(mq.matches);
     on();
-    mq.addEventListener('change', on);
-    return () => mq.removeEventListener('change', on);
+    return listenMedia(mq, on);
   }, [query]);
   return m;
 }
@@ -200,6 +200,10 @@ export const Formacion: React.FC = () => {
     let lastT = 0;
     let lastW = 0;
     let lastH = 0;
+    const releaseTexture = () => {
+      const texture = field?.texture;
+      if (texture) texture.width = texture.height = 1;
+    };
     const resize = () => {
       const w = st.offsetWidth;
       const h = st.offsetHeight;
@@ -207,19 +211,22 @@ export const Formacion: React.FC = () => {
       lastW = w;
       lastH = h;
       // en pantallas estrechas el lienzo es alto: limitar la densidad
-      dpr = Math.min(window.devicePixelRatio || 1, h > 1600 ? 1.25 : 2);
+      dpr = Math.min(window.devicePixelRatio || 1, isLite() || h > 1600 ? 1.25 : 2);
       cv.width = Math.round(w * dpr);
       cv.height = Math.round(h * dpr);
-      field = buildBoard(w, h, dpr);
+      releaseTexture();
+      field = buildBoard(w, h, dpr, !hasPhoto);
       lastP = -1;
       if (!raf) frame(performance.now());
     };
     const frame = (t: number) => {
       raf = 0;
       if (!field) return;
-      const p = reduced ? 1 : progRef.current;
+      const progress = reduced ? 1 : progRef.current;
+      // La foto trae sus chinchetas. Tras apagarse las luces, el lienzo queda fijo.
+      const p = hasPhoto ? Math.min(progress, 0.4) : progress;
       // redibuja si cambió el progreso, o ~30 fps mientras las luces titilan
-      if (p !== lastP || (isTwinkling(p) && t - lastT > 33)) {
+      if (p !== lastP || (!isLite() && isTwinkling(p) && t - lastT > 33)) {
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         drawBoard(ctx, field, p, t, { bulbY: BULB_VH * window.innerHeight, vh: window.innerHeight, photo: hasPhoto });
         lastP = p;
@@ -239,6 +246,9 @@ export const Formacion: React.FC = () => {
       ro.disconnect();
       io.disconnect();
       cancelAnimationFrame(raf);
+      releaseTexture();
+      field = null;
+      cv.width = cv.height = 1;
     };
   }, [reduced, usePhoto]);
 
@@ -496,7 +506,7 @@ export const Formacion: React.FC = () => {
         <canvas ref={canvasRef} aria-hidden className="absolute inset-0 w-full h-full pointer-events-none" />
         {BOARD_IMG && usePhoto && (
           <img
-            src={BOARD_IMG}
+            decoding="async" src={BOARD_IMG}
             alt=""
             aria-hidden
             className="fm-boardimg pointer-events-none select-none"

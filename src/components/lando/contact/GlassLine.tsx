@@ -39,7 +39,14 @@ export const GlassLine: React.FC<{ id: string; text: string; kind: 'caps' | 'ser
     document.fonts?.ready.then(measure);
     const ro = new ResizeObserver(measure);
     ro.observe(wrap);
-    return () => ro.disconnect();
+    // Si una fuente carga DESPUÉS de `fonts.ready`, el texto cambia de ancho (y de posición,
+    // va centrado) sin que el cuadro `wrap` cambie: hay que volver a medir. Antes esto se
+    // corregía "de rebote" con el salto de ancho de la barra de scroll.
+    document.fonts?.addEventListener?.('loadingdone', measure);
+    return () => {
+      document.fonts?.removeEventListener?.('loadingdone', measure);
+      ro.disconnect();
+    };
   }, []);
 
   const clipUrl = `url(#${id})`;

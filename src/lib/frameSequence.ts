@@ -547,3 +547,237 @@ export function drawSequence(
   state.lastSource = smoothPlayback ? s : undefined;
   return true;
 }
+
+// =====================================================================================
+// MODO LIGERO (celulares / tabletas, ver lib/deviceProfile.ts). El escritorio NO usa nada
+// de lo que sigue: allí todo funciona exactamente como arriba.
+//
+// En el teléfono la página llegaba a ~1,3 GB (iOS mata la pestaña): por cada fotograma se
+// retenían un <img> + su Blob (cientos), las ventanas de ImageBitmap guardaban fotogramas
+// COMPLETOS de 1600x900 (5,5 MB c/u) aunque en vertical solo se ve un tercio, y había
+// ventanas llenas de secuencias que no estaban en pantalla. Aquí:
+//  - solo se guardan los Blob (comprimidos) de una secuencia SUBMUESTREADA (1 de cada N),
+//    sin <img> ni URL de objeto (los descarga ScrollFrameStage por proximidad);
+//  - se decodifica una VENTANA chica alrededor del cuadro actual,
+//    RECORTADA a la parte del fotograma que cae dentro del lienzo y reescalada al tamaño
+//    en que se dibuja (nunca ampliada): ~2 MB por bitmap en vez de 5,5;
+//  - lo que sale de la ventana se libera (close) y al salir de la sección se libera todo.
+// Si el cuadro pedido aún no se descargó, se usa el descargado más cercano (la "pose fija"):
+// nunca un hueco.
+// =====================================================================================
+
+/** Recorte del fotograma (px de la fuente, enteros) y su destino en el lienzo (px). */
+export interface LiteCrop {
+  sx: number;
+  sy: number;
+  sw: number;
+  sh: number;
+  dx: number;
+  dy: number;
+  dw: number;
+  dh: number;
+}
+
+/** Parte visible del fotograma iw x ih dibujado completo en `rect`, recortada al lienzo W x H. */
+export function liteCrop(iw: number, ih: number, rect: FrameRect, W: number, H: number): LiteCrop | null {
+  const x0 = Math.max(0, rect.x);
+  const y0 = Math.max(0, rect.y);
+  const x1 = Math.min(W, rect.x + rect.w);
+  const y1 = Math.min(H, rect.y + rect.h);
+  if (x1 - x0 < 1 || y1 - y0 < 1 || rect.w < 1 || rect.h < 1) return null;
+  const kx = iw / rect.w;
+  const ky = ih / rect.h;
+  // createImageBitmap pide un recorte en píxeles enteros: se redondea hacia afuera y el
+  // destino se corrige con la misma escala (el dibujo queda en el mismo lugar)
+  const sx = Math.max(0, Math.floor((x0 - rect.x) * kx));
+  const sy = Math.max(0, Math.floor((y0 - rect.y) * ky));
+  const sw = Math.max(1, Math.min(iw - sx, Math.ceil((x1 - rect.x) * kx) - sx));
+  const sh = Math.max(1, Math.min(ih - sy, Math.ceil((y1 - rect.y) * ky) - sy));
+  return { sx, sy, sw, sh, dx: rect.x + sx / kx, dy: rect.y + sy / ky, dw: sw / kx, dh: sh / ky };
+}
+
+interface LiteEntry {
+  s: FrameSource;
+  // true: la fuente ya es solo el recorte (se dibuja entera en el destino)
+  cropped: boolean;
+}
+
+function releaseLite(e: LiteEntry) {
+  if (e.s instanceof HTMLImageElement) {
+    // suelta la imagen decodificada (camino de reserva sin createImageBitmap)
+    e.s.removeAttribute('src');
+    return;
+  }
+  release(e.s);
+}
+
+export class LiteFrameWindow {
+  private map = new Map<number, LiteEntry>();
+  private pending = new Set<number>();
+  private failed = new Set<number>();
+  private crop: LiteCrop | null = null;
+  private key = '';
+  private gen = 0;
+  private lo = 0;
+  private hi = -1;
+  private last: { k: number; dir: number; n: number } | null = null;
+  // escalones de compatibilidad: recorte + reescalado -> solo recorte -> completo -> <img>
+  private mode: 'resize' | 'crop' | 'full' | 'img' = CAN_BITMAP ? 'resize' : 'img';
+  onReady: (() => void) | null = null;
+
+  constructor(
+    private getBlob: (k: number) => Blob | null,
+    private ahead = 3,
+    private behind = 1,
+  ) {}
+
+  setCrop(c: LiteCrop | null) {
+    const key = c ? `${c.sx},${c.sy},${c.sw},${c.sh},${Math.round(c.dw)},${Math.round(c.dh)}` : '';
+    this.crop = c;
+    if (key === this.key) return;
+    this.key = key;
+    this.clear();
+  }
+
+  private clear() {
+    this.gen++;
+    for (const e of this.map.values()) releaseLite(e);
+    this.map.clear();
+    this.pending.clear();
+    this.failed.clear();
+  }
+
+  /** Libera toda la ventana (al salir de la sección); se vuelve a llenar al pedir. */
+  releaseAll() {
+    this.clear();
+    this.last = null;
+  }
+
+  dispose() {
+    this.clear();
+    this.onReady = null;
+  }
+
+  get size() {
+    return this.map.size;
+  }
+
+  get(k: number) {
+    return this.map.get(k);
+  }
+
+  /** El ya decodificado más cercano a k (la ventana es chica: se recorre entera). */
+  nearestReady(k: number): LiteEntry | undefined {
+    let best: LiteEntry | undefined;
+    let bd = Infinity;
+    for (const [i, e] of this.map) {
+      const d = Math.abs(i - k) + (i > k ? 0.5 : 0); // a igual distancia, el anterior
+      if (d < bd) {
+        bd = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
+  private inWindow(k: number) {
+    return k >= this.lo - 1 && k <= this.hi + 1;
+  }
+
+  request(k: number, dir: number, n: number) {
+    if (!this.crop) return;
+    this.last = { k, dir, n };
+    const back = dir < 0 ? this.ahead : this.behind;
+    const fwd = dir < 0 ? this.behind : this.ahead;
+    this.lo = Math.max(0, k - back);
+    this.hi = Math.min(n - 1, k + fwd);
+    for (const [i, e] of this.map) {
+      if (!this.inWindow(i)) {
+        releaseLite(e);
+        this.map.delete(i);
+      }
+    }
+    const s = dir < 0 ? -1 : 1;
+    const targets = [k];
+    for (let d = 1; d <= this.ahead; d++) targets.push(k + s * d);
+    for (let d = 1; d <= this.behind; d++) targets.push(k - s * d);
+    for (const i of targets) {
+      // de a dos: en un teléfono más decodificaciones a la vez no llegan antes
+      if (this.pending.size >= 2) break;
+      if (i < this.lo || i > this.hi || this.map.has(i) || this.pending.has(i) || this.failed.has(i)) continue;
+      const blob = this.getBlob(i);
+      if (blob) this.load(i, blob);
+    }
+  }
+
+  /** Avisa que llegó un Blob nuevo (puede completar la ventana actual). */
+  poke() {
+    const r = this.last;
+    if (r) this.request(r.k, r.dir, r.n);
+  }
+
+  private load(k: number, blob: Blob) {
+    const gen = this.gen;
+    const crop = this.crop!;
+    this.pending.add(k);
+    this.decode(blob, crop)
+      .then((e) => {
+        if (gen !== this.gen || !this.inWindow(k)) {
+          releaseLite(e);
+          return;
+        }
+        const old = this.map.get(k);
+        if (old) releaseLite(old);
+        this.map.set(k, e);
+        this.onReady?.();
+      })
+      .catch(() => {
+        /* fotograma dañado: se sigue con los vecinos */
+      })
+      .finally(() => {
+        if (gen !== this.gen) return;
+        this.pending.delete(k);
+        this.poke();
+      });
+  }
+
+  private async decode(blob: Blob, c: LiteCrop): Promise<LiteEntry> {
+    // tamaño final: el del destino en el lienzo, sin ampliar nunca la fuente
+    const rw = Math.max(1, Math.min(c.sw, Math.round(c.dw)));
+    const rh = Math.max(1, Math.min(c.sh, Math.round(c.dh)));
+    if (this.mode === 'resize') {
+      try {
+        return { s: await createImageBitmap(blob, c.sx, c.sy, c.sw, c.sh, { resizeWidth: rw, resizeHeight: rh, resizeQuality: 'medium' }), cropped: true };
+      } catch {
+        this.mode = 'crop';
+      }
+    }
+    if (this.mode === 'crop') {
+      try {
+        return { s: await createImageBitmap(blob, c.sx, c.sy, c.sw, c.sh), cropped: true };
+      } catch {
+        this.mode = 'full';
+      }
+    }
+    if (this.mode === 'full') {
+      try {
+        return { s: await createImageBitmap(blob), cropped: false };
+      } catch {
+        this.mode = 'img';
+      }
+    }
+    const url = URL.createObjectURL(blob);
+    try {
+      const im = new Image();
+      im.decoding = 'async';
+      await new Promise<void>((resolve, reject) => {
+        im.onload = () => resolve();
+        im.onerror = reject;
+        im.src = url;
+      });
+      return { s: im, cropped: false };
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  }
+}

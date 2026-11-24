@@ -1,7 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { endPreloading, loadFonts, loadState, startWarmups, warmupState } from '../../lib/preload';
+import { appMountTime, endPreloading, loadFonts, loadState, startWarmups, warmupState } from '../../lib/preload';
+import { isLite } from '../../lib/deviceProfile';
 import { prepareLiquidExit, startLiquidExit } from './liquidExit';
-import { isMobileProfile } from '../../lib/assistedScroll';
+
+// Copia de lib/assistedScroll.isMobileProfile: importarla desde ahí arrastraría gsap + lenis
+// al chunk de entrada (la pantalla de carga debe pintarse sin esperar el código de la página).
+const isMobileProfile = () =>
+  typeof window !== 'undefined' &&
+  !!window.matchMedia &&
+  window.matchMedia('(max-width: 1023px), (hover: none) and (pointer: coarse)').matches;
 
 // PANTALLA DE CARGA tipo LETRERO LED (referencia de la usuaria): "cargando..." en minúscula
 // hecho de cuadraditos de luz rosa neón sobre negro, y debajo una barra también de
@@ -20,9 +27,8 @@ import { isMobileProfile } from '../../lib/assistedScroll';
 // líquido ya va subiendo. Mientras está, bloquea rueda / toques / teclas.
 
 const MIN_MS = 2500;
-// En móvil y tablet (< 1024 px) el tiempo máximo es de 6 s para evitar esperas excesivas;
-// escritorio (>= 1024 px): 30 s (solo red de seguridad; con la red normal termina mucho antes).
-const MAX_MS = typeof window !== 'undefined' && window.innerWidth < 1024 ? 6000 : 30000;
+const MAX_MS = 30000;
+const LITE_MAX_MS = 6000;
 // tope de espera del calentamiento una vez cargados los fotogramas
 const WARM_CAP_MS = 12000;
 // pesos del porcentaje
@@ -186,6 +192,7 @@ export const Preloader: React.FC = () => {
 
   // ---------- canvas: tamaño + función de dibujo ----------
   useEffect(() => {
+    if (unmount) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx0 = canvas.getContext('2d');
@@ -198,7 +205,7 @@ export const Preloader: React.FC = () => {
     const setup = () => {
       W = window.innerWidth;
       H = window.innerHeight;
-      dpr = Math.min(2, window.devicePixelRatio || 1);
+      dpr = Math.min(isLite() ? 1.25 : 2, window.devicePixelRatio || 1);
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
       draw();
@@ -320,29 +327,65 @@ export const Preloader: React.FC = () => {
     drawRef.current = draw;
     setup();
     window.addEventListener('resize', setup);
-    return () => window.removeEventListener('resize', setup);
-  }, []);
+    return () => {
+      window.removeEventListener('resize', setup);
+      drawRef.current = () => {};
+      canvas.width = canvas.height = 1;
+    };
+  }, [unmount]);
 
   // ---------- progreso real ----------
   useEffect(() => {
     const t0 = performance.now();
+    const lite = isLite();
     loadFonts().then(() => (fontsOk.current = true), () => (fontsOk.current = true));
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let raf = 0;
     let done = false;
     let framesDoneAt = -1; // instante (ms desde t0) en que los fotogramas quedaron completos
     let warmStarted = false;
+    let exitTimer = 0;
+    let revealTimer = 0;
+    let liteExpired = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      cancelAnimationFrame(raf);
+      view.current.pct = 100;
+      view.current.dots = 3;
+      setPct(100);
+      drawRef.current();
+      if (!lite && !reduce) prepareLiquidExit();
+      exitTimer = window.setTimeout(() => {
+        setLeaving(true);
+        revealTimer = window.setTimeout(() => {
+          endPreloading();
+          setGone(true);
+        }, reduce ? 0 : lite ? EXIT_MS_2D * 0.5 : EXIT_MS * 0.5);
+      }, lite ? 0 : 250);
+    };
+    const deadline = lite ? window.setTimeout(() => {
+      liteExpired = true;
+      if (document.querySelector('#root main')) finish();
+    }, LITE_MAX_MS) : 0;
+    const safety = lite ? window.setTimeout(finish, MAX_MS) : 0;
     const tick = () => {
-      const now = performance.now() - t0;
+      // Esta pantalla se pinta ANTES de bajar el código de la página (main.tsx hace import() de App):
+      // 'raw' cuenta desde que el letrero aparece (puntos, tiempo mínimo, avance inicial) y 'now'
+      // desde que la página se monta (marcas de tiempo de la carga real: fotogramas, tope, calentamiento),
+      // que es lo que medía antes porque entonces ambas cosas arrancaban a la vez.
+      const raw = performance.now() - t0;
+      const am = appMountTime();
+      const now = am == null ? 0 : performance.now() - am;
       const { loaded, total } = loadState();
       // sin datos todavía, avanza lento hasta 15 %
-      const frames = total > 0 ? loaded / total : Math.min(0.15, now / 8000);
+      const frames = total > 0 ? loaded / total : Math.min(0.15, raw / 8000);
       // fotogramas completos (con un margen de 1.5 s para que se registren todas las secuencias)
       if (framesDoneAt < 0 && total > 0 && loaded >= total && now > 1500) framesDoneAt = now;
       // el calentamiento arranca con los fotogramas a medias (la red sigue ocupada, la CPU no);
       // las tareas que se registren más tarde se recogen en cada vuelta (startWarmups es idempotente)
       if (!warmStarted && (frames >= 0.5 || now > 4000)) warmStarted = true;
-      if (warmStarted) startWarmups();
+      if (warmStarted && !lite) startWarmups();
       const w = warmupState();
       // sin ninguna tarea registrada, el calentamiento cuenta como hecho al terminar los fotogramas
       const warm = w.total > 0 ? w.done / w.total : framesDoneAt >= 0 ? 1 : 0;
@@ -350,9 +393,17 @@ export const Preloader: React.FC = () => {
       const sum = frames * W_FRAMES + warm * W_WARM + (fontsOk.current ? W_FONTS : 0);
       const real = sum > 0.9999 ? 1 : sum;
       // nunca pasa el tiempo mínimo: el contador no llega a 100 antes de MIN_MS
-      const cap = Math.min(1, now / MIN_MS);
+      const cap = Math.min(1, raw / MIN_MS);
       const stuck = framesDoneAt >= 0 && now - framesDoneAt > WARM_CAP_MS;
-      const wanted = now > MAX_MS || stuck ? 1 : Math.min(real, cap);
+      // (si el código de la página no llegara a montarse nunca, raw evita que la carga quede eterna)
+      if (lite && document.querySelector('#root main') &&
+          (liteExpired || (raw >= MIN_MS && loaded > 0 && fontsOk.current))) {
+        finish();
+        return;
+      }
+      const wanted = lite
+        ? Math.min(0.96, cap * (0.5 + (loaded > 0 ? 0.38 : 0) + (fontsOk.current ? 0.08 : 0)))
+        : now > MAX_MS || stuck || raw > MAX_MS + 20000 ? 1 : Math.min(real, cap);
       // monótono: si llegan tareas nuevas el total crece, pero el porcentaje no retrocede
       target.current = Math.max(target.current, wanted);
       shown.current += (target.current - shown.current) * (reduce ? 1 : 0.08);
@@ -360,32 +411,27 @@ export const Preloader: React.FC = () => {
       const p = Math.floor(shown.current * 100);
       setPct(p);
       // puntos suspensivos: se encienden de a uno (fijos en 3 con movimiento reducido)
-      const dots = reduce ? 3 : Math.floor(now / 380) % 4;
+      const dots = reduce ? 3 : Math.floor(raw / 380) % 4;
       const v = view.current;
       if (v.pct !== p || v.dots !== dots) {
         v.pct = p;
         v.dots = dots;
         drawRef.current();
       }
-      if (shown.current >= 1 && !done) {
-        done = true;
-        v.dots = 3;
-        drawRef.current();
-        // compila el shader del líquido ahora, durante la pausa en 100 %
-        if (!reduce) prepareLiquidExit();
-        window.setTimeout(() => {
-          setLeaving(true);
-          window.setTimeout(() => {
-            endPreloading();
-            setGone(true);
-          }, reduce ? 0 : EXIT_MS * 0.5); // la portada arranca cuando el líquido ya va subiendo
-        }, 250);
+      if (shown.current >= 1) {
+        finish();
         return;
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.clearTimeout(deadline);
+      window.clearTimeout(safety);
+      window.clearTimeout(exitTimer);
+      window.clearTimeout(revealTimer);
+    };
   }, []);
 
   // ---------- salida: el líquido se recoge hacia arriba ----------
@@ -413,7 +459,7 @@ export const Preloader: React.FC = () => {
     }
     // 1) líquido WebGL (liquidExit.ts); el letrero 2D se le pasa como textura
     const liquid =
-      wrap && canvas
+      !isLite() && wrap && canvas
         ? startLiquidExit({
             host: wrap,
             sign: canvas,

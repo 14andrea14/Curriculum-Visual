@@ -26,7 +26,8 @@ interface HeroFramesState {
 // Sección 3.2). basePath apunta a una carpeta de /public con manifest.json +
 // frame_001.webp..frame_NNN.webp. Si el manifest no existe (video aún no
 // exportado), loaded queda en false y el caller debe usar su fallback.
-export function useHeroFrames(basePath: string, motionHoldFrame?: number): HeroFramesState {
+// basePath = null: no se carga nada (p. ej. el guiño en el modo ligero de celulares).
+export function useHeroFrames(basePath: string | null, motionHoldFrame?: number): HeroFramesState {
   const [state, setState] = useState<HeroFramesState>({
     frames: null,
     width: 0,
@@ -36,6 +37,7 @@ export function useHeroFrames(basePath: string, motionHoldFrame?: number): HeroF
     failed: false,
   });
   useEffect(() => {
+    if (!basePath) return;
     const controller = new AbortController();
     const { signal } = controller;
 
@@ -55,7 +57,8 @@ export function useHeroFrames(basePath: string, motionHoldFrame?: number): HeroF
         const onOneLoaded = () => {
           if (signal.aborted) return;
           loadedCount += 1;
-          setState((prev) => ({ ...prev, loadProgress: loadedCount / manifest.count }));
+          // (sin setState por fotograma: eran cientos de renders durante la carga y nadie leía
+          // el avance parcial; el estado cambia una sola vez, al completar la secuencia)
           reportLoad(basePath, loadedCount, manifest.count);
           if (loadedCount === manifest.count) {
             setState({

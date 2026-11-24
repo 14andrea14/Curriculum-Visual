@@ -1,3 +1,5 @@
+import { refreshScroll } from '../../../lib/refreshScroll';
+import { isLite } from '../../../lib/deviceProfile';
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
@@ -51,6 +53,11 @@ export const FooterScene: React.FC<{
     const wrap = wrapRef.current;
     if (!wrap) return;
     let lastKey = '';
+    let lastRoW = 0;
+    let lastRoH = 0;
+    let roRaf = 0;
+    let refreshTimer = 0;
+    let lastEm = 0; // ancho del nombre en em (depende de la fuente)
     const fit = (force = false) => {
       const line = wrap.querySelector<HTMLElement>('.ft-name');
       if (!line) return;
@@ -60,6 +67,7 @@ export const FooterScene: React.FC<{
       wrap.style.fontSize = '100px';
       const w = line.scrollWidth;
       if (w <= 0) return;
+      lastEm = w / 100;
       const fs = (100 * wrap.clientWidth) / w;
       wrap.style.fontSize = `${fs}px`;
       const drops = Array.from(line.querySelectorAll<HTMLElement>('.ft-drop'));
@@ -75,13 +83,62 @@ export const FooterScene: React.FC<{
         ys: drops.map(baseOf),
         total: w / 100,
       });
-      ScrollTrigger.refresh();
+      // los ajustes por redimensionado agrupan el refresh (150 ms); los forzados (montaje,
+      // fuentes) lo hacen enseguida, como antes
+      window.clearTimeout(refreshTimer);
+      if (force) refreshScroll();
+      else refreshTimer = window.setTimeout(() => refreshScroll(), 150);
     };
     fit(true);
     document.fonts?.ready.then(() => fit(true));
-    const ro = new ResizeObserver(() => fit());
+    // Tolerante: los cambios pequeños de tamaño (< 24 px en ancho Y alto; p. ej. los ~11 px
+    // de una barra de scroll que aparece o desaparece) se ignoran, y los reales se agrupan
+    // en un solo ajuste por cuadro. Cada ajuste termina en refreshScroll(), que
+    // recalcula estilos y layout de toda la página (~0,5 s medidos).
+    lastRoW = wrap.clientWidth;
+    lastRoH = wrap.clientHeight;
+    const ro = new ResizeObserver((entries) => {
+      // El ancho del nombre (en em) cambia si carga la fuente Anton DESPUÉS del ajuste
+      // (`document.fonts.ready` puede resolverse antes de que se pida): hay que reajustar
+      // aunque el cuadro contenedor no cambie. Antes esto se corregía "de rebote" con el
+      // cambio de ancho de la barra de scroll.
+      const ln0 = wrap.querySelector<HTMLElement>('.ft-name');
+      const fsNow0 = parseFloat(wrap.style.fontSize);
+      if (ln0 && fsNow0 > 0 && lastEm > 0 && Math.abs(ln0.scrollWidth / fsNow0 - lastEm) / lastEm > 0.005) {
+        lastRoW = wrap.clientWidth;
+        lastRoH = wrap.clientHeight;
+        if (roRaf) cancelAnimationFrame(roRaf);
+        roRaf = requestAnimationFrame(() => {
+          roRaf = 0;
+          fit(true);
+        });
+        return;
+      }
+      const r = entries.find((e) => e.target === wrap)?.contentRect;
+      if (!r) return;
+      if (Math.abs(r.width - lastRoW) < 24 && Math.abs(r.height - lastRoH) < 24) {
+        // salvo que cambie el cuadro del nombre (una o dos líneas, en el punto de corte lg)
+        const ln = wrap.querySelector<HTMLElement>('.ft-name');
+        if (!ln || lastKey.endsWith(`|${getComputedStyle(ln).flexDirection}`)) return;
+      }
+      if (r) {
+        lastRoW = r.width;
+        lastRoH = r.height;
+      }
+      if (roRaf) return;
+      roRaf = requestAnimationFrame(() => {
+        roRaf = 0;
+        fit();
+      });
+    });
     ro.observe(wrap);
-    return () => ro.disconnect();
+    const nameLine = wrap.querySelector<HTMLElement>('.ft-name');
+    if (nameLine) ro.observe(nameLine);
+    return () => {
+      if (roRaf) cancelAnimationFrame(roRaf);
+      window.clearTimeout(refreshTimer);
+      ro.disconnect();
+    };
   }, []);
 
   useLayoutEffect(() => {
@@ -220,7 +277,7 @@ export const FooterScene: React.FC<{
     <div ref={rootRef} className="ft-scene pointer-events-auto">
       {/* 1) cielo */}
       <div aria-hidden className="ft-layer ft-sky -top-[7%] h-[107%]">
-        <img src="/footer/sky.webp" alt="" className="ft-img" decoding="async" loading="lazy" />
+        <img src={isLite() ? '/footer/sky-lite.webp' : '/footer/sky.webp'} alt="" className="ft-img" decoding="async" loading="lazy" />
       </div>
 
       {/* 2) pila de vidrio: titular + nombre, apoyada un poco por debajo de la cresta */}
@@ -275,7 +332,7 @@ export const FooterScene: React.FC<{
 
       {/* 3) colina de pasto del frente: tapa la base de las letras */}
       <div aria-hidden className="ft-layer ft-near bottom-0" style={{ height: 'var(--hh)' }}>
-        <img src="/footer/hills.webp" alt="" className="ft-img" decoding="async" loading="lazy" />
+        <img src={isLite() ? '/footer/hills-lite.webp' : '/footer/hills.webp'} alt="" className="ft-img" decoding="async" loading="lazy" />
       </div>
       <div aria-hidden className="ft-grain" />
 

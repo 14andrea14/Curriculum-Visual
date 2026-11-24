@@ -241,6 +241,6 @@ export const CardBackFace: React.FC = () => (
       boxShadow: '0 2em 4em -1em rgba(0,0,0,.6)',
     }}
   >
-    <img src="/poker/card-back.webp" alt="" className="w-full h-full object-cover select-none" style={{ borderRadius: '4%/2.9%' }} draggable={false} />
+    <img decoding="async" src="/poker/card-back.webp" alt="" className="w-full h-full object-cover select-none" style={{ borderRadius: '4%/2.9%' }} draggable={false} />
   </div>
 );

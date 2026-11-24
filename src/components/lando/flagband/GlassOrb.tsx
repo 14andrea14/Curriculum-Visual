@@ -1,3 +1,5 @@
+import { isLite, hasWebGL2 } from '../../../lib/deviceProfile';
+import { SafeBoundary } from '../../ui/SafeBoundary';
 import React, { useEffect, useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
@@ -346,7 +348,10 @@ export const GlassOrb = React.memo<{
   st: React.MutableRefObject<OrbState>;
   advRef: React.MutableRefObject<((t: number) => void) | null>;
 }>(function GlassOrb({ st, advRef }) {
+  const fallback = <div className="absolute inset-[24%] rounded-full border border-[#F230D2]/40 bg-[#0A1A2B]/70" />;
+  if (isLite() || !hasWebGL2()) return fallback;
   return (
+    <SafeBoundary fallback={fallback}>
     <Canvas
       frameloop="never"
       // tamaño por offsetWidth (no por getBoundingClientRect): el contenedor se achica con
@@ -373,5 +378,6 @@ export const GlassOrb = React.memo<{
       <Bridge advRef={advRef} />
       <WarmUp delay={1800} />
     </Canvas>
+    </SafeBoundary>
   );
 });
