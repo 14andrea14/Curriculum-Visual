@@ -155,6 +155,56 @@ export const useAssistedScroll = () => {
     let touchY: number | null = null;
     let touchFired = false;
 
+    // SUBIDA LIBRE (solo escritorio): al subir, el scroll es normal y rápido (Lenis), sin repetir la
+    // animación asistida entre secciones; el contenido ya está atado al scroll (scrub) y se rebobina
+    // solo. El motor asistido sigue mandando al BAJAR y en el último tramo hacia la portada: el
+    // "piso" es la primera parada tras la portada (flag-read); más arriba, la portada tiene su propio
+    // asistido y no se la puede cruzar con inercia libre.
+    let freeActive = false;
+    let floorCache: { at: number; y: number | null } = { at: -Infinity, y: null };
+    const floorY = (): number | null => {
+      const now = performance.now();
+      if (now - floorCache.at > 300) {
+        const first = resolveStops().find((r) => r.id !== 'hero-end');
+        floorCache = { at: now, y: first ? first.y : null };
+      }
+      return floorCache.y;
+    };
+    const freeUpOk = () => {
+      if (animating || isMobileProfile()) return false;
+      const f = floorY();
+      return f != null && window.scrollY > f + 6;
+    };
+    let guardOff: (() => void) | null = null;
+    const startFreeUp = () => {
+      const lenis = getLenis();
+      window.clearTimeout(chainTimer); // un encadenado pendiente no debe tirar hacia abajo
+      pendingDir = 0;
+      lenis?.start();
+      freeActive = true;
+      if (lenis && !guardOff) {
+        // la inercia libre no puede cruzar el piso: se frena en seco en la primera parada
+        const onScroll = (l: { scroll: number; scrollTo: (...a: any[]) => void }) => {
+          if (!freeActive || animating) return;
+          const f = floorY();
+          if (f != null && l.scroll < f - 0.5) {
+            freeActive = false;
+            l.scrollTo(f, { immediate: true, force: true });
+            // la racha de rueda en curso ya "se gastó" al chocar con el piso: lo que siga de la misma
+            // racha no dispara el viaje a la portada (hace falta un gesto nuevo tras una pausa)
+            streamDir = -1;
+            streamAt = performance.now();
+            streamMag = 0;
+            streamPeak = 0;
+            streamUsed = true;
+            wheelAccum = 0;
+          }
+        };
+        (lenis as any).on('scroll', onScroll);
+        guardOff = () => (lenis as any).off('scroll', onScroll);
+      }
+    };
+
     const zoneStart = () => heroEnd();
     const inZone = () => {
       const z = zoneStart();
@@ -220,6 +270,7 @@ export const useAssistedScroll = () => {
       const custom = dir > 0 ? target.stop?.easing : from?.stop?.easing;
       const easing = custom ? (dir > 0 ? custom : mirror(custom)) : SOFT;
       animating = true;
+      freeActive = false;
       tripDir = dir;
       tripEndsAt = performance.now() + seconds * 1000;
       pendingDir = 0;
@@ -333,6 +384,12 @@ export const useAssistedScroll = () => {
     const onWheel = (e: WheelEvent) => {
       if (usesNativeScroll(e.target) || !inZone()) return;
       const lenis = getLenis();
+      // subida libre: la rueda hacia arriba la maneja Lenis tal cual (ni se detiene ni se cancela)
+      if (e.deltaY < 0 && freeUpOk()) {
+        startFreeUp();
+        return;
+      }
+      if (e.deltaY > 0) freeActive = false;
       // dentro de la zona, Lenis nunca mueve la página por su cuenta
       const toHero = e.deltaY < 0 && !animating && window.scrollY <= (zoneStart() ?? 0) + 4;
       if (!toHero) {
@@ -409,6 +466,28 @@ export const useAssistedScroll = () => {
         upToCover('wheel');
         return;
       }
+      // subida libre con el teclado: desplazamiento normal del navegador/Lenis
+      if (up && freeUpOk()) {
+        startFreeUp();
+        // suave con Lenis (el salto nativo es brusco): flecha = paso corto, PageUp/Shift+Espacio = casi una pantalla.
+        // Parte del destino ya acumulado, así mantener la tecla apretada sigue subiendo sin cortes.
+        const lenis = getLenis() as any;
+        if (lenis) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          const page = e.key !== 'ArrowUp';
+          const step = page ? window.innerHeight * 0.85 : 110;
+          const base = typeof lenis.targetScroll === 'number' ? lenis.targetScroll : window.scrollY;
+          const f = floorY();
+          const to = Math.max(f ?? 0, base - step);
+          lenis.scrollTo(to, {
+            duration: page ? 0.7 : 0.4,
+            easing: (t: number) => 1 - Math.pow(1 - t, 3),
+          });
+        }
+        return;
+      }
+      if (down) freeActive = false;
       e.stopImmediatePropagation();
       // mantener la tecla apretada no encadena viajes: un toque = un viaje
       if (e.repeat) {
@@ -429,6 +508,7 @@ export const useAssistedScroll = () => {
     (window as any).__assistedAnimating = () => animating || performance.now() - landedAt < 250;
     (window as any).__assistedStops = () => resolveStops().map((s) => `${s.id} @ ${s.y}`);
     return () => {
+      guardOff?.();
       window.clearTimeout(safety);
       window.clearTimeout(chainTimer);
       window.removeEventListener('wheel', onWheel, { capture: true } as any);

@@ -1078,6 +1078,8 @@ export const FlagBand: React.FC = () => {
           y: () => (!corto() ? svY(1.55) : null),
           desktop: 6.0,
           mobile: 4.8,
+          // al subir hacia la portada (único tramo asistido hacia arriba en escritorio): más ágil
+          upDesktop: 2.6,
           easing: entradaLenta,
         },
         {
